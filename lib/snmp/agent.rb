@@ -146,74 +146,10 @@ class Agent
 		@plugins = {}
 	end
 
-	def process_get_request(message)
-		response = message.response
-		response.pdu.varbind_list.each do |v|
-			@log.debug "GetRequest OID: #{v.name}"
-			v.value = self.get_snmp_value_from_plugin(v.name)
-		end
-
-		response
-	end
-
-	def process_get_next_request(message)
-		response = message.response
-		response.pdu.varbind_list.each do |v|
-			@log.debug "OID: #{v.name}"
-			v.name = self.next_oid_in_tree(v.name)
-			v.value = get_snmp_value_from_plugin(v.name)
-		end
-	
-		response
-	end
-	
 	def add_plugin(base_oid, &block)
 		@plugins[ObjectId.new(base_oid)] = block
 	end
 
-		
-
-	def get_snmp_value_from_plugin(oid)
-		@log.debug("get_snmp_value_from_plugin(#{oid.to_s})")
-		data_value = get_raw_value_from_plugin(oid)
-		
-		if data_value.is_a? ::Integer
-			SNMP::Integer.new(data_value)
-		elsif data_value.is_a? String
-			SNMP::OctetString.new(data_value)
-		elsif data_value.nil?
-			SNMP::NoSuchObject.new
-		else
-			SNMP::OctetString.new(data_value.to_s)
-		end
-	end
-	
-	def get_plugin_oid(oid)
-		plugin_oid = @plugins.keys.select {|p| oid.subtree_of? p }.sort {|a, b| a.length <=> b.length}[0]
-	end
-
-	def get_raw_value_from_plugin(oid)
-		oid = ObjectId.new(oid) unless oid.is_a? ObjectId
-
-		plugin_oid = get_plugin_oid(oid)
-		return nil if plugin_oid.nil?
-		
-		plugin = @plugins[plugin_oid]
-		return nil if plugin.nil?
-
-		data = plugin.call unless plugin.nil?
-		
-		subtree = oid[plugin_oid.length..-1]
-
-		# Now we've got the data set, let's get the value back out again
-		while subtree.length > 0 and data.is_a? Array
-			idx = subtree.shift
-			data = data[idx]
-		end
-
-		return data unless data.is_a? Array or subtree.length > 0
-	end
-		
 	def start
 		@socket = UDPSocket.open
 		@socket.bind(nil, listen_port)
@@ -265,6 +201,69 @@ class Agent
 	end
 
 	alias stop :shutdown
+
+	private
+	def process_get_request(message)
+		response = message.response
+		response.pdu.varbind_list.each do |v|
+			@log.debug "GetRequest OID: #{v.name}"
+			v.value = get_snmp_value_from_plugin(v.name)
+		end
+
+		response
+	end
+
+	def process_get_next_request(message)
+		response = message.response
+		response.pdu.varbind_list.each do |v|
+			@log.debug "OID: #{v.name}"
+			v.name = self.next_oid_in_tree(v.name)
+			v.value = get_snmp_value_from_plugin(v.name)
+		end
+	
+		response
+	end
+	
+	def get_snmp_value_from_plugin(oid)
+		@log.debug("get_snmp_value_from_plugin(#{oid.to_s})")
+		data_value = get_raw_value_from_plugin(oid)
+		
+		if data_value.is_a? ::Integer
+			SNMP::Integer.new(data_value)
+		elsif data_value.is_a? String
+			SNMP::OctetString.new(data_value)
+		elsif data_value.nil?
+			SNMP::NoSuchObject.new
+		else
+			SNMP::OctetString.new(data_value.to_s)
+		end
+	end
+	
+	def get_plugin_oid(oid)
+		plugin_oid = @plugins.keys.select {|p| oid.subtree_of? p }.sort {|a, b| a.length <=> b.length}[0]
+	end
+
+	def get_raw_value_from_plugin(oid)
+		oid = ObjectId.new(oid) unless oid.is_a? ObjectId
+
+		plugin_oid = get_plugin_oid(oid)
+		return nil if plugin_oid.nil?
+		
+		plugin = @plugins[plugin_oid]
+		return nil if plugin.nil?
+
+		data = plugin.call unless plugin.nil?
+		
+		subtree = oid[plugin_oid.length..-1]
+
+		# Now we've got the data set, let's get the value back out again
+		while subtree.length > 0 and data.is_a? Array
+			idx = subtree.shift
+			data = data[idx]
+		end
+
+		return data unless data.is_a? Array or subtree.length > 0
+	end
 end
 
 end
@@ -274,4 +273,3 @@ agent = SNMP::Agent.new(1061)
 trap("INT") { agent.shutdown }
 agent.start
 end
-
