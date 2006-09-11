@@ -1,0 +1,8 @@
+* Provide "sparse" arrays (probably by permitting hashes in plugins as well as
+	arrays)
+
+* Support GetNext requests
+
+* Allow the restriction of requests based on community name
+
+* Handle the case where there are no plugins specified (bomb on startup?)
