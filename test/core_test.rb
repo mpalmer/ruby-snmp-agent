@@ -3,7 +3,7 @@ require File.dirname(__FILE__) + '/test_helper.rb'
 require 'snmp/agent'
 
 class SNMP::Agent
-	public :get_raw_value_from_plugin, :process_get_request
+	public :process_get_request
 end
 
 class CoreTest < Test::Unit::TestCase

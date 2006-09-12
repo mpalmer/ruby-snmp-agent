@@ -143,11 +143,23 @@ class Agent
 		@log = settings[:logger]
 		@max_packet = settings[:max_packet]
 		
-		@plugins = {}
+		@mib_tree = {}
 	end
 
 	def add_plugin(base_oid, &block)
-		@plugins[ObjectId.new(base_oid)] = block
+		base_oid = ObjectId.new(base_oid) unless base_oid.is_a? ObjectId
+
+		current_node = @mib_tree
+		while base_oid.length > 1
+			next_step = base_oid.shift
+			throw ArgumentError.new("#{next_step.inspect} is not an integer") unless next_step.is_a? ::Integer
+			if current_node[next_step].nil?
+				current_node[next_step] = {}
+				current_node = current_node[next_step]
+			end
+		end
+
+		current_node[base_oid[0]] = block
 	end
 
 	def start
@@ -226,7 +238,7 @@ class Agent
 	
 	def get_snmp_value_from_plugin(oid)
 		@log.debug("get_snmp_value_from_plugin(#{oid.to_s})")
-		data_value = get_raw_value_from_plugin(oid)
+		data_value = get_mib_entry(oid)
 		
 		if data_value.is_a? ::Integer
 			SNMP::Integer.new(data_value)
@@ -239,30 +251,21 @@ class Agent
 		end
 	end
 	
-	def get_plugin_oid(oid)
-		plugin_oid = @plugins.keys.select {|p| oid.subtree_of? p }.sort {|a, b| a.length <=> b.length}[0]
-	end
-
-	def get_raw_value_from_plugin(oid)
+	def get_mib_entry(oid)
 		oid = ObjectId.new(oid) unless oid.is_a? ObjectId
-
-		plugin_oid = get_plugin_oid(oid)
-		return nil if plugin_oid.nil?
+		current_node = @mib_tree
 		
-		plugin = @plugins[plugin_oid]
-		return nil if plugin.nil?
-
-		data = plugin.call unless plugin.nil?
-		
-		subtree = oid[plugin_oid.length..-1]
-
-		# Now we've got the data set, let's get the value back out again
-		while subtree.length > 0 and data.is_a? Array
-			idx = subtree.shift
-			data = data[idx]
+		while oid.length > 0
+			here = oid.shift
+			# If we're going to walk a tree entry, it'll want
+			# to be 
+			return nil unless current_node.is_a? Array or current_node.is_a? Hash or current_node.is_a? Proc
+			current_node = current_node[here]
+			current_node = current_node.call if current_node.is_a? Proc
+			return nil if current_node.nil?
 		end
-
-		return data unless data.is_a? Array or subtree.length > 0
+		
+		current_node unless current_node.is_a? Array or current_node.is_a? Hash or current_node.is_a? Proc
 	end
 end
 
