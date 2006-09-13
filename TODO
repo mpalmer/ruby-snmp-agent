@@ -1,11 +1,5 @@
-* Provide "sparse" arrays (probably by permitting hashes in plugins as well as
-	arrays)
-
 * Support GetNext requests
 
 * Allow the restriction of requests based on community name
 
 * Handle the case where there are no plugins specified (bomb on startup?)
-
-* TEST CASE: GetNext on the last entry in a plugin should return the first
-	entry in the next plugin
