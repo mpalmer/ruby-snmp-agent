@@ -225,7 +225,7 @@ class Agent
 		response = message.response
 		response.pdu.varbind_list.each do |v|
 			@log.debug "GetRequest OID: #{v.name}"
-			v.value = get_snmp_value_from_plugin(v.name)
+			v.value = get_snmp_value(v.name)
 		end
 
 		response
@@ -236,21 +236,21 @@ class Agent
 		response.pdu.varbind_list.each do |v|
 			@log.debug "OID: #{v.name}"
 			v.name = self.next_oid_in_tree(v.name)
-			v.value = get_snmp_value_from_plugin(v.name)
+			v.value = get_snmp_value(v.name)
 		end
 	
 		response
 	end
 	
-	def get_snmp_value_from_plugin(oid)
-		@log.debug("get_snmp_value_from_plugin(#{oid.to_s})")
+	def get_snmp_value(oid)
+		@log.debug("get_snmp_value(#{oid.to_s})")
 		data_value = get_mib_entry(oid)
 		
 		if data_value.is_a? ::Integer
 			SNMP::Integer.new(data_value)
 		elsif data_value.is_a? String
 			SNMP::OctetString.new(data_value)
-		elsif data_value.nil?
+		elsif data_value.nil? or data_value.is_a? Array or data_value.is_a? Hash
 			SNMP::NoSuchObject.new
 		else
 			SNMP::OctetString.new(data_value.to_s)
@@ -281,9 +281,98 @@ class Agent
 		
 		current_node
 	end
+
+	def next_oid_in_tree(oid)
+		@log.debug "Looking for the next OID from #{oid.to_s}"
+		oid = ObjectId.new(oid) unless oid.is_a? ObjectId
+		
+		next_oid = []
+		
+		current_node = get_mib_entry(oid)
+		current_node = current_node.call if current_node.is_a? Proc
+		
+		@log.debug "Current node is a(n) #{current_node.class}"
+		if current_node.is_a? Array or current_node.is_a? Hash
+			@log.debug "There is a subtree from #{oid.to_s}"
+			# There is a subtree below the requested location, so we just need
+			# to walk down the far "left" (lowest numbered entry) of the tree
+			# until we hit the end, and that's our next.
+			next_oid = oid.dup
+			while current_node.is_a? Array or current_node.is_a? Hash or current_node.is_a? Proc
+				current_node = current_node.call if current_node.is_a? Proc
+				next_oid << current_node.keys.sort[0]
+				current_node = current_node[next_oid[-1]]
+			end
+			
+			@log.debug "Next OID from #{oid.to_s} is #{next_oid.to_s}"
+			return next_oid
+		end
+		
+		# Bugger, the OID given to the GetNext is either a leaf node or
+		# doesn't exist at all.  This means that we need to tromp through the
+		# given OID, slowly and carefully, making sure to only add to the
+		# next_oid when the current node has a larger neighbour.  Then once
+		# we've worked out what the start of the "next" is, we walk it's left
+		# side to find the endpoint.  Blergh.
+		current_node = @mib_tree
+		@log.debug "Walking the entire tree"
+		oid.length.times do |oid_idx|
+			@log.debug "Level #{oid_idx} in the tree"
+			@log.debug "Node in our OID is #{oid[oid_idx]}"
+			current_node = current_node.call if current_node.is_a? Proc
+			
+			# Are we at a dead-end in the tree?
+			break if current_node.nil?
+			maybe_next = current_node.keys.sort.find {|v| v > oid[oid_idx]}
+			@log.debug "Next element in the tree at this level is #{maybe_next}"
+			
+			# The 'next' OID is constructed of the path through the tree that got
+			# us to this node, plus the node 'next' to this one at this level of the
+			# tree.  If there's no 'next' node at this level, then we shouldn't update
+			# the next_oid because at the moment the 'next' OID is in a whole separate
+			# subtree
+			if oid_idx == 0
+				path_to_here = []
+			else
+				path_to_here = oid[0, oid_idx - 1]
+			end
+			next_oid = ObjectId.new(path_to_here + [maybe_next]) unless maybe_next.nil?
+			@log.debug "I currently think the next OID is somewhere below #{next_oid.to_s}"
+			current_node = current_node[oid[oid_idx]]
+		end
+
+		# Special case: if our next_oid is empty, then we've ended up off the end of the
+		# MIB and it's time to send back an error
+		if next_oid.length == 0
+			return SNMP::EndOfMibView.new
+		end
+
+		# So, we start from where we left off above, and then walk through that subtree
+		# to find the *real* first entry
+		current_node = get_mib_entry(next_oid)
+		while current_node.is_a? Array or current_node.is_a? Hash or current_node.is_a? Proc
+			@log.debug "Now at #{next_oid.to_s}"
+			current_node = current_node.call if current_node.is_a? Proc
+			@log.debug "Keys at this level are #{current_node.keys.inspect}"
+			@log.debug "First node at this level is #{current_node.keys.sort[0]}"
+			next_oid << current_node.keys.sort[0]
+			current_node = current_node[next_oid[-1]]
+		end
+
+		ObjectId.new(next_oid)
+	end
 end
 
 end
+
+class Array
+	def keys
+		k = []
+		self.length.times { |v| k << v }
+		k
+	end
+end
+
 
 if $0 == __FILE__
 agent = SNMP::Agent.new(1061)
