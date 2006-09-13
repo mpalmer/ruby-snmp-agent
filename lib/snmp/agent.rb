@@ -259,7 +259,7 @@ class Agent
 	
 	def get_mib_entry(oid)
 		@log.debug "Looking for MIB entry #{oid.to_s}"
-		oid = ObjectId.new(oid) unless oid.is_a? ObjectId
+		oid = ObjectId.new(oid)
 		current_node = @mib_tree
 		
 		while oid.length > 0

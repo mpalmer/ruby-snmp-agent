@@ -13,6 +13,13 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		a.add_plugin('1.2.3') { 42 }
 		
 		assert_equal(42, a.get_mib_entry('1.2.3'))
+
+		# Special check to make sure that get_mib_entry doesn't
+		# mangle the OID passed in
+		oid = SNMP::ObjectId.new('1.2.3')
+		assert_equal(42, a.get_mib_entry(oid))
+		assert_equal(SNMP::ObjectId, oid.class)
+		assert_equal('1.2.3', oid.to_s)
 	end
 
 	def test_almost_as_trivial_plugin
