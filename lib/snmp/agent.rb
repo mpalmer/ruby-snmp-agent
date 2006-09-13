@@ -150,16 +150,22 @@ class Agent
 		base_oid = ObjectId.new(base_oid) unless base_oid.is_a? ObjectId
 
 		current_node = @mib_tree
-		while base_oid.length > 1
-			next_step = base_oid.shift
+		(base_oid.length - 1).times do |oid_idx|
+			next_step = base_oid[oid_idx]
 			throw ArgumentError.new("#{next_step.inspect} is not an integer") unless next_step.is_a? ::Integer
 			if current_node[next_step].nil?
 				current_node[next_step] = {}
-				current_node = current_node[next_step]
 			end
+			if current_node[next_step].is_a? Proc
+				raise ArgumentError.new("Adding plugin #{base_oid} would encroach on the subtree of an existing plugin")
+			end
+			current_node = current_node[next_step]
 		end
 
-		current_node[base_oid[0]] = block
+		unless current_node[base_oid[-1]].nil?
+			raise ArgumentError.new("OID #{base_oid} is already occupied by something; cannot put a plugin here")
+		end
+		current_node[base_oid[-1]] = block
 	end
 
 	def start
@@ -252,20 +258,28 @@ class Agent
 	end
 	
 	def get_mib_entry(oid)
+		@log.debug "Looking for MIB entry #{oid.to_s}"
 		oid = ObjectId.new(oid) unless oid.is_a? ObjectId
 		current_node = @mib_tree
 		
 		while oid.length > 0
 			here = oid.shift
+			@log.debug "Now going to #{here}"
 			# If we're going to walk a tree entry, it'll want
-			# to be 
-			return nil unless current_node.is_a? Array or current_node.is_a? Hash or current_node.is_a? Proc
+			# to be something we can walk into
+			unless current_node.is_a? Array or current_node.is_a? Hash or current_node.is_a? Proc
+				@log.debug "Current node isn't something I know how to deal with; bailing"
+				return nil
+			end
 			current_node = current_node[here]
 			current_node = current_node.call if current_node.is_a? Proc
-			return nil if current_node.nil?
+			if current_node.nil?
+				@log.debug "Current node is nil; nothing good can come of this"
+				return nil
+			end
 		end
 		
-		current_node unless current_node.is_a? Array or current_node.is_a? Hash or current_node.is_a? Proc
+		current_node
 	end
 end
 
