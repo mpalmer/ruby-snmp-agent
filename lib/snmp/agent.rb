@@ -363,6 +363,56 @@ class Agent
 	end
 end
 
+class MibNode < Hash
+	def initialize(initial_data = {})
+		initial_data.keys.each do |k|
+			raise ArgumentError.new("MIB key #{k} is not an integer") unless k.is_a? ::Integer
+			self[k] = initial_data[k]
+			if self[k].is_a? Array or self[k].is_a? Hash
+				self[k] = MibNode.new(self[k])
+			end
+		end
+	end
+
+	def get_node(oid, opts = {})
+		oid = ObjectId.new(oid)
+		def_opts = {:allow_plugins => true}
+		opts = def_opts.merge(opts)
+
+		here = oid.shift
+		if here.nil?
+			# End of the road, bud
+			return self
+		end
+
+		# Dereference into the subtree, let's see what we've got here, shall we?
+		val = self[here]
+
+		if val.is_a? Proc
+			if opts[:allow_plugins].false?
+				raise SNMP::TraversesPluginError.new("Cannot traverse plugin")
+			else
+				val = val.call
+				if val.is_a? Array or val.is_a? Hash
+					val = MibNode.new(val)
+				end
+			end
+		end
+		
+		if val.is_a? MibNode
+			# Walk the line
+			return val.get_node(oid, opts)
+		end
+		
+		return val
+	end
+end
+
+# Raised when we have asked MibNode#get_node to get a node but have
+# told it not to traverse plugins.
+class TraversesPluginError < StandardError
+end
+
 end
 
 class Array
@@ -373,6 +423,15 @@ class Array
 	end
 end
 
+class FalseClass
+	def false?; true; end
+	def true?; false; end
+end
+
+class TrueClass
+	def false?; false; end
+	def true?; true; end
+end
 
 if $0 == __FILE__
 agent = SNMP::Agent.new(1061)
