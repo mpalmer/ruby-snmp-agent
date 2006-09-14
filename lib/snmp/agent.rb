@@ -376,7 +376,8 @@ class MibNode < Hash
 
 	def get_node(oid, opts = {})
 		oid = ObjectId.new(oid)
-		def_opts = {:allow_plugins => true}
+		def_opts = {:allow_plugins => true,
+		            :make_new_nodes => false}
 		opts = def_opts.merge(opts)
 
 		here = oid.shift
@@ -385,9 +386,16 @@ class MibNode < Hash
 			return self
 		end
 
+		# Are we creating new trees as we go?
+		if opts[:make_new_nodes].true?
+			if self[here].nil?
+				self[here] = MibNode.new
+			end
+		end
+		
 		# Dereference into the subtree, let's see what we've got here, shall we?
 		val = self[here]
-
+		
 		if val.is_a? Proc
 			if opts[:allow_plugins].false?
 				raise SNMP::TraversesPluginError.new("Cannot traverse plugin")

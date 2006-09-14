@@ -89,4 +89,13 @@ class MibNodeTest < Test::Unit::TestCase
 
 		assert_raise(SNMP::TraversesPluginError) { n.get_node('1.2.3.0', :allow_plugins => false) }
 	end
+
+	def test_make_it_as_we_walk_it
+		n = SNMP::MibNode.new(1 => {2 => {3 => [0, 1, 2, 3]}})
+		
+		assert_equal(nil, n.get_node('3.2.3.5'))
+		n_ = n.get_node('3.2.3.5', :make_new_nodes => true)
+		assert_equal(SNMP::MibNode, n_.class)
+		assert_equal(0, n_.length)
+	end
 end
