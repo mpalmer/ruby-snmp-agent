@@ -368,20 +368,7 @@ class MibNode < Hash
 			end
 		end
 		
-		# Dereference into the subtree. Let's see what we've got here, shall we?
-		next_node = self[next_idx]
-		
-		if next_node.is_a? Proc
-			if opts[:allow_plugins].false?
-				raise SNMP::TraversesPluginError.new("Cannot traverse plugin")
-			else
-				next_node = next_node.call
-				if next_node.is_a? Array or next_node.is_a? Hash
-					next_node = MibNode.new(next_node)
-				end
-			end
-		end
-		
+		next_node = sub_node(next_idx, opts)
 		if next_node.is_a? MibNode
 			# Walk the line
 			return next_node.get_node(oid, opts)
@@ -401,14 +388,7 @@ class MibNode < Hash
 		next_idx = self.keys.sort[0]
 
 		# Dereference into the subtree. Let's see what we've got here, shall we?
-		next_node = self[next_idx]
-		
-		if next_node.is_a? Proc
-			next_node = next_node.call
-			if next_node.is_a? Array or next_node.is_a? Hash
-				next_node = MibNode.new(next_node)
-			end
-		end
+		next_node = sub_node(next_idx)
 		
 		if next_node.is_a? MibNode
 			# Walk the line
@@ -421,6 +401,29 @@ class MibNode < Hash
 		path.unshift(next_idx)
 
 		return path
+	end
+
+	private
+	def sub_node(idx, opts = {})
+		raise ArgumentError.new("Index [#{idx}] must be an integer in a MIB tree") unless idx.is_a? ::Integer
+		def_opts = {:allow_plugins => true}
+		opts = def_opts.merge(opts)
+		
+		# Dereference into the subtree. Let's see what we've got here, shall we?
+		next_node = self[idx]
+		
+		if next_node.is_a? Proc
+			if opts[:allow_plugins].false?
+				raise SNMP::TraversesPluginError.new("Cannot traverse plugin")
+			else
+				next_node = next_node.call
+				if next_node.is_a? Array or next_node.is_a? Hash
+					next_node = MibNode.new(next_node)
+				end
+			end
+		end
+
+		return next_node
 	end
 end
 
