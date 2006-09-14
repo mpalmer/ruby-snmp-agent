@@ -143,29 +143,23 @@ class Agent
 		@log = settings[:logger]
 		@max_packet = settings[:max_packet]
 		
-		@mib_tree = {}
+		@mib_tree = MibNode.new
 	end
 
 	def add_plugin(base_oid, &block)
 		base_oid = ObjectId.new(base_oid) unless base_oid.is_a? ObjectId
 
-		current_node = @mib_tree
-		(base_oid.length - 1).times do |oid_idx|
-			next_step = base_oid[oid_idx]
-			throw ArgumentError.new("#{next_step.inspect} is not an integer") unless next_step.is_a? ::Integer
-			if current_node[next_step].nil?
-				current_node[next_step] = {}
-			end
-			if current_node[next_step].is_a? Proc
-				raise ArgumentError.new("Adding plugin #{base_oid} would encroach on the subtree of an existing plugin")
-			end
-			current_node = current_node[next_step]
+		our_node = base_oid[-1]
+		begin
+			parent = @mib_tree.get_node(base_oid[0..-2], :allow_plugins => false, :make_new_nodes => true)
+		rescue SNMP::TraversesPluginError
+			raise ArgumentError.new("Adding plugin #{base_oid} would encroach on the subtree of an existing plugin")
 		end
-
-		unless current_node[base_oid[-1]].nil?
+		if parent[our_node].nil?
+			parent[our_node] = block
+		else
 			raise ArgumentError.new("OID #{base_oid} is already occupied by something; cannot put a plugin here")
 		end
-		current_node[base_oid[-1]] = block
 	end
 
 	def start
