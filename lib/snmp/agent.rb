@@ -238,7 +238,7 @@ class Agent
 	
 	def get_snmp_value(oid)
 		@log.debug("get_snmp_value(#{oid.to_s})")
-		data_value = get_mib_entry(oid)
+		data_value = @mib_tree.get_node(oid)
 		
 		if data_value.is_a? ::Integer
 			SNMP::Integer.new(data_value)
@@ -254,26 +254,7 @@ class Agent
 	def get_mib_entry(oid)
 		@log.debug "Looking for MIB entry #{oid.to_s}"
 		oid = ObjectId.new(oid)
-		current_node = @mib_tree
-		
-		while oid.length > 0
-			here = oid.shift
-			@log.debug "Now going to #{here}"
-			# If we're going to walk a tree entry, it'll want
-			# to be something we can walk into
-			unless current_node.is_a? Array or current_node.is_a? Hash or current_node.is_a? Proc
-				@log.debug "Current node isn't something I know how to deal with; bailing"
-				return nil
-			end
-			current_node = current_node[here]
-			current_node = current_node.call if current_node.is_a? Proc
-			if current_node.nil?
-				@log.debug "Current node is nil; nothing good can come of this"
-				return nil
-			end
-		end
-		
-		current_node
+		@mib_tree.get_node(oid)
 	end
 
 	def next_oid_in_tree(oid)
@@ -387,26 +368,30 @@ class MibNode < Hash
 			end
 		end
 		
-		# Dereference into the subtree, let's see what we've got here, shall we?
-		val = self[here]
+		# Dereference into the subtree. Let's see what we've got here, shall we?
+		next_val = self[here]
 		
-		if val.is_a? Proc
+		if next_val.is_a? Proc
 			if opts[:allow_plugins].false?
 				raise SNMP::TraversesPluginError.new("Cannot traverse plugin")
 			else
-				val = val.call
-				if val.is_a? Array or val.is_a? Hash
-					val = MibNode.new(val)
+				next_val = next_val.call
+				if next_val.is_a? Array or next_val.is_a? Hash
+					next_val = MibNode.new(next_val)
 				end
 			end
 		end
 		
-		if val.is_a? MibNode
+		if next_val.is_a? MibNode
 			# Walk the line
-			return val.get_node(oid, opts)
+			return next_val.get_node(oid, opts)
+		elsif oid.length == 0
+			# Got to the end of the OID at just the right time
+			return next_val
+		else
+			# We're out of tree but not out of path... so it must be nil!
+			return nil
 		end
-		
-		return val
 	end
 end
 

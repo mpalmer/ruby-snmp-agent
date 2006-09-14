@@ -27,7 +27,7 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		
 		a.add_plugin('1.2.3') { [42] }
 		
-		assert_equal([42], a.get_mib_entry('1.2.3'))
+		assert_equal({0=>42}, a.get_mib_entry('1.2.3'))
 		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3').class)
 		assert_equal(42, a.get_mib_entry('1.2.3.0'))
 	end
@@ -37,7 +37,7 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		
 		a.add_plugin('1.2.3') { [0, 1, 2, 3, 4, 5] }
 		
-		assert_equal([0, 1, 2, 3, 4, 5], a.get_mib_entry('1.2.3'))
+		assert_equal({0=>0,1=>1,2=>2,3=>3,4=>4,5=>5}, a.get_mib_entry('1.2.3'))
 		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3').class)
 		6.times { |v| assert_equal(v, a.get_mib_entry("1.2.3.#{v}")) }
 	end
@@ -49,12 +49,13 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		a.add_plugin('1.2.3') { [0, 1, 2] }
 		a.add_plugin('4.5.6') { [5, 6, 7] }
 
-		assert_equal([nil, ['the', 'quick', 'brown', 'etc']], a.get_mib_entry('1.1'))
+		assert_equal({0 => nil, 1 => {0=>'the', 1=>'quick', 2=>'brown', 3=>'etc'}},
+		             a.get_mib_entry('1.1'))
 		assert_equal(nil, a.get_mib_entry('1.1.0'))
 		assert_equal('brown', a.get_mib_entry('1.1.1.2'))
-		assert_equal([0, 1, 2], a.get_mib_entry('1.2.3'))
+		assert_equal({0=>0, 1=>1, 2=>2}, a.get_mib_entry('1.2.3'))
 		assert_equal(0, a.get_mib_entry('1.2.3.0'))
-		assert_equal([5, 6, 7], a.get_mib_entry('4.5.6'))
+		assert_equal({0=>5, 1=>6, 2=>7}, a.get_mib_entry('4.5.6'))
 		assert_equal(6, a.get_mib_entry('4.5.6.1'))
 	end
 
@@ -83,9 +84,10 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		
 		a.add_plugin('1.2.3') { [[11, 12, 13], [21, 22, 23], [31, 32, 33]] }
 
-		assert_equal([[11, 12, 13], [21, 22, 23], [31, 32, 33]], a.get_mib_entry('1.2.3'))
+		assert_equal({0=>{0=>11, 1=>12, 2=>13}, 1=>{0=>21, 1=>22, 2=>23}, 2=>{0=>31, 1=>32, 2=>33}},
+		             a.get_mib_entry('1.2.3'))
 		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3').class)
-		assert_equal([11, 12, 13], a.get_mib_entry('1.2.3.0'))
+		assert_equal({0=>11, 1=>12, 2=>13}, a.get_mib_entry('1.2.3.0'))
 		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3.0').class)
 		
 		3.times { |i|

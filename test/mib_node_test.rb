@@ -57,6 +57,7 @@ class MibNodeTest < Test::Unit::TestCase
 		assert_equal(SNMP::MibNode, n.get_node([2]).class)
 		assert_equal(Proc, n[2].class)
 		assert_equal(42, n.get_node('2.0'))
+		assert_equal(nil, n.get_node('2.1'))
 	end
 	
 	def test_with_noninteger_keys
