@@ -244,7 +244,7 @@ class Agent
 			SNMP::Integer.new(data_value)
 		elsif data_value.is_a? String
 			SNMP::OctetString.new(data_value)
-		elsif data_value.nil? or data_value.is_a? Array or data_value.is_a? Hash
+		elsif data_value.nil? or data_value.is_a? MibNode
 			SNMP::NoSuchObject.new
 		else
 			SNMP::OctetString.new(data_value.to_s)
@@ -264,23 +264,14 @@ class Agent
 		next_oid = []
 		
 		current_node = get_mib_entry(oid)
-		current_node = current_node.call if current_node.is_a? Proc
 		
 		@log.debug "Current node is a(n) #{current_node.class}"
-		if current_node.is_a? Array or current_node.is_a? Hash
+		if current_node.is_a? MibNode
 			@log.debug "There is a subtree from #{oid.to_s}"
 			# There is a subtree below the requested location, so we just need
 			# to walk down the far "left" (lowest numbered entry) of the tree
 			# until we hit the end, and that's our next.
-			next_oid = oid.dup
-			while current_node.is_a? Array or current_node.is_a? Hash or current_node.is_a? Proc
-				current_node = current_node.call if current_node.is_a? Proc
-				next_oid << current_node.keys.sort[0]
-				current_node = current_node[next_oid[-1]]
-			end
-			
-			@log.debug "Next OID from #{oid.to_s} is #{next_oid.to_s}"
-			return next_oid
+			return ObjectId.new(oid + current_node.left_path)
 		end
 		
 		# Bugger, the OID given to the GetNext is either a leaf node or
@@ -305,7 +296,7 @@ class Agent
 			# us to this node, plus the node 'next' to this one at this level of the
 			# tree.  If there's no 'next' node at this level, then we shouldn't update
 			# the next_oid because at the moment the 'next' OID is in a whole separate
-			# subtree
+			# subtree.  Diagrams would be useful at this point, but my ASCII art sucks.
 			if oid_idx == 0
 				path_to_here = []
 			else
@@ -325,16 +316,7 @@ class Agent
 		# So, we start from where we left off above, and then walk through that subtree
 		# to find the *real* first entry
 		current_node = get_mib_entry(next_oid)
-		while current_node.is_a? Array or current_node.is_a? Hash or current_node.is_a? Proc
-			@log.debug "Now at #{next_oid.to_s}"
-			current_node = current_node.call if current_node.is_a? Proc
-			@log.debug "Keys at this level are #{current_node.keys.inspect}"
-			@log.debug "First node at this level is #{current_node.keys.sort[0]}"
-			next_oid << current_node.keys.sort[0]
-			current_node = current_node[next_oid[-1]]
-		end
-
-		ObjectId.new(next_oid)
+		return ObjectId.new(next_oid + current_node.left_path)
 	end
 end
 
