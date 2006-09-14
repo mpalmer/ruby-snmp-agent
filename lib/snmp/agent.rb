@@ -355,43 +355,72 @@ class MibNode < Hash
 		            :make_new_nodes => false}
 		opts = def_opts.merge(opts)
 
-		here = oid.shift
-		if here.nil?
+		next_idx = oid.shift
+		if next_idx.nil?
 			# End of the road, bud
 			return self
 		end
 
 		# Are we creating new trees as we go?
 		if opts[:make_new_nodes].true?
-			if self[here].nil?
-				self[here] = MibNode.new
+			if self[next_idx].nil?
+				self[next_idx] = MibNode.new
 			end
 		end
 		
 		# Dereference into the subtree. Let's see what we've got here, shall we?
-		next_val = self[here]
+		next_node = self[next_idx]
 		
-		if next_val.is_a? Proc
+		if next_node.is_a? Proc
 			if opts[:allow_plugins].false?
 				raise SNMP::TraversesPluginError.new("Cannot traverse plugin")
 			else
-				next_val = next_val.call
-				if next_val.is_a? Array or next_val.is_a? Hash
-					next_val = MibNode.new(next_val)
+				next_node = next_node.call
+				if next_node.is_a? Array or next_node.is_a? Hash
+					next_node = MibNode.new(next_node)
 				end
 			end
 		end
 		
-		if next_val.is_a? MibNode
+		if next_node.is_a? MibNode
 			# Walk the line
-			return next_val.get_node(oid, opts)
+			return next_node.get_node(oid, opts)
 		elsif oid.length == 0
 			# Got to the end of the OID at just the right time
-			return next_val
+			return next_node
 		else
 			# We're out of tree but not out of path... so it must be nil!
 			return nil
 		end
+	end
+	
+	# Return the path down the 'left' side of the MIB tree from this point.
+	# The 'left' is, of course, the smallest node in each subtree until we
+	# get to a leaf.
+	def left_path()
+		next_idx = self.keys.sort[0]
+
+		# Dereference into the subtree. Let's see what we've got here, shall we?
+		next_node = self[next_idx]
+		
+		if next_node.is_a? Proc
+			next_node = next_node.call
+			if next_node.is_a? Array or next_node.is_a? Hash
+				next_node = MibNode.new(next_node)
+			end
+		end
+		
+		if next_node.is_a? MibNode
+			# Walk the line
+			path = next_node.left_path()
+		else
+			path = []
+		end
+
+		# Add ourselves to the front of the path
+		path.unshift(next_idx)
+
+		return path
 	end
 end
 

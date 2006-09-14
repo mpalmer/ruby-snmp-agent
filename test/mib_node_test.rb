@@ -99,4 +99,11 @@ class MibNodeTest < Test::Unit::TestCase
 		assert_equal(SNMP::MibNode, n_.class)
 		assert_equal(0, n_.length)
 	end
+
+	def test_left_path
+		n = SNMP::MibNode.new(1 => {2 => {3 => [0, 1, 2, 3]}, 3 => {2 => [4, 5, 6, 7]}})
+		
+		assert_equal([1,2,3,0], n.left_path)
+		assert_equal([2,0], n.get_node('1.3').left_path)
+	end
 end
