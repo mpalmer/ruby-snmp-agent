@@ -6,7 +6,7 @@ class SNMP::Agent
 	public :process_get_request
 end
 
-class CoreTest < Test::Unit::TestCase
+class SnmpProtocolTest < Test::Unit::TestCase
 	def test_single_get
 		a = SNMP::Agent.new
 		
