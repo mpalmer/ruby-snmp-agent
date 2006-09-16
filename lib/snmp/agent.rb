@@ -230,7 +230,11 @@ class Agent
 		response.pdu.varbind_list.each do |v|
 			@log.debug "OID: #{v.name}"
 			v.name = self.next_oid_in_tree(v.name)
-			v.value = get_snmp_value(v.name)
+			v.value = if SNMP::EndOfMibView == v.name.class
+				v.name
+			else
+				get_snmp_value(v.name)
+			end
 		end
 	
 		response
@@ -274,7 +278,7 @@ class Agent
 			return ObjectId.new(oid + current_node.left_path)
 		end
 		
-		# Bugger, the OID given to the GetNext is either a leaf node or
+		# Bugger.  The OID given to the GetNext is either a leaf node or
 		# doesn't exist at all.  This means that we need to tromp through the
 		# given OID, slowly and carefully, making sure to only add to the
 		# next_oid when the current node has a larger neighbour.  Then once
@@ -300,10 +304,10 @@ class Agent
 			if oid_idx == 0
 				path_to_here = []
 			else
-				path_to_here = oid[0, oid_idx - 1]
+				path_to_here = oid[0, oid_idx]
 			end
 			next_oid = ObjectId.new(path_to_here + [maybe_next]) unless maybe_next.nil?
-			@log.debug "I currently think the next OID is somewhere below #{next_oid.to_s}"
+			@log.debug "I currently think the next OID is at or somewhere below #{next_oid.to_s}"
 			current_node = current_node[oid[oid_idx]]
 		end
 
@@ -316,7 +320,11 @@ class Agent
 		# So, we start from where we left off above, and then walk through that subtree
 		# to find the *real* first entry
 		current_node = get_mib_entry(next_oid)
-		return ObjectId.new(next_oid + current_node.left_path)
+		if current_node.is_a? MibNode
+			return ObjectId.new(next_oid + current_node.left_path)
+		else
+			return ObjectId.new(next_oid)
+		end
 	end
 end
 

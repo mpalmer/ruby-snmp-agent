@@ -132,5 +132,13 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		
 		# Or even *at* the end of the tree
 		assert_equal(SNMP::EndOfMibView, a.next_oid_in_tree('4.5.6.2').class)
+
+		a = SNMP::Agent.new
+		
+		a.add_plugin('1.2.3') { [1, 1, 2, 3, 5, 8, 13] }
+		
+		assert_equal(5, a.get_mib_entry('1.2.3.4'))
+		assert_equal('1.2.3.5', a.next_oid_in_tree('1.2.3.4').to_s)
+
 	end
 end
