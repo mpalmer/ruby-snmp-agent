@@ -1,5 +1,8 @@
-* Support GetNext requests
-
 * Allow the restriction of requests based on community name
 
-* Handle the case where there are no plugins specified (bomb on startup?)
+* Implement a simple mechanism whereby pre-written plugins can
+  easily be dropped in (without having to explicitly pass the
+  code block into the agent).
+
+* Support symbolic OID specification in add_plugin (I suspect it
+  may already be available, but it'll need to be tested)

@@ -28,7 +28,7 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		a.add_plugin('1.2.3') { [42] }
 		
 		assert_equal({0=>42}, a.get_mib_entry('1.2.3'))
-		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3').class)
+		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3'))
 		assert_equal(42, a.get_mib_entry('1.2.3.0'))
 	end
 
@@ -38,7 +38,7 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		a.add_plugin('1.2.3') { [0, 1, 2, 3, 4, 5] }
 		
 		assert_equal({0=>0,1=>1,2=>2,3=>3,4=>4,5=>5}, a.get_mib_entry('1.2.3'))
-		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3').class)
+		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3'))
 		6.times { |v| assert_equal(v, a.get_mib_entry("1.2.3.#{v}")) }
 	end
 
@@ -86,9 +86,9 @@ class PluginInterfaceTest < Test::Unit::TestCase
 
 		assert_equal({0=>{0=>11, 1=>12, 2=>13}, 1=>{0=>21, 1=>22, 2=>23}, 2=>{0=>31, 1=>32, 2=>33}},
 		             a.get_mib_entry('1.2.3'))
-		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3').class)
+		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3'))
 		assert_equal({0=>11, 1=>12, 2=>13}, a.get_mib_entry('1.2.3.0'))
-		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3.0').class)
+		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3.0'))
 		
 		3.times { |i|
 			3.times { |j|
@@ -104,11 +104,11 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		
 		# Fails because we don't have .1.2.3.4
 		assert_equal(nil, a.get_mib_entry('1.2.3.4'))
-		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3.4').class)
+		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3.4'))
 		
 		# Fails because we don't have a subtree from .1.2.3.1
 		assert_equal(nil, a.get_mib_entry('1.2.3.1.0'))
-		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3.1.0').class)
+		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3.1.0'))
 	end
 
 	def test_next_oid_in_tree
@@ -128,10 +128,10 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		assert_equal('4.5.6.0', a.next_oid_in_tree('2.3.4.5.6.78').to_s)
 		
 		# What about when we're off the end of the tree?
-		assert_equal(SNMP::EndOfMibView, a.next_oid_in_tree('5').class)
+		assert_equal(SNMP::EndOfMibView, a.next_oid_in_tree('5'))
 		
 		# Or even *at* the end of the tree
-		assert_equal(SNMP::EndOfMibView, a.next_oid_in_tree('4.5.6.2').class)
+		assert_equal(SNMP::EndOfMibView, a.next_oid_in_tree('4.5.6.2'))
 
 		a = SNMP::Agent.new
 		

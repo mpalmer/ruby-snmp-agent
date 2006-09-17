@@ -35,7 +35,7 @@ class SnmpProtocolTest < Test::Unit::TestCase
 		
 		assert_equal(SNMP::Message, resp.class)
 		assert_equal(1, resp.pdu.varbind_list.length)
-		assert_equal(SNMP::NoSuchObject, resp.pdu.varbind_list[0].value.class)
+		assert_equal(SNMP::NoSuchObject, resp.pdu.varbind_list[0].value)
 	end
 
 	def test_multi_get_request
@@ -50,29 +50,29 @@ class SnmpProtocolTest < Test::Unit::TestCase
 		
 		assert_equal(SNMP::Message, resp.class)
 		assert_equal(3, resp.pdu.varbind_list.length)
-		assert_equal(SNMP::NoSuchObject, resp.pdu.varbind_list[0].value.class)
+		assert_equal(SNMP::NoSuchObject, resp.pdu.varbind_list[0].value)
 		assert_equal(42, resp.pdu.varbind_list[1].value.to_i)
-		assert_equal(SNMP::NoSuchObject, resp.pdu.varbind_list[2].value.class)
+		assert_equal(SNMP::NoSuchObject, resp.pdu.varbind_list[2].value)
 	end
 
 	# This is where things get *really* tricky
 	def test_get_next_request
 		a = SNMP::Agent.new
 		
-		a.add_plugin('1.2.3') { [1, 1, 2, 3, 5, 8, 13] }
+		a.add_plugin('3.2.1') { [1, 1, 2, 3, 5, 8, 13] }
 		
-		pdu = SNMP::GetNextRequest.new(1, SNMP::VarBindList.new(['1.2.3', '1.2.3.4', '1.2.3.6', '2']))
+		pdu = SNMP::GetNextRequest.new(1, SNMP::VarBindList.new(['3.2.1', '3.2.1.4', '3.2.1.6']))
 		msg = SNMP::Message.new(1, 'public', pdu)
 		
 		resp = a.process_get_next_request(msg)
 		
 		assert_equal(SNMP::Message, resp.class)
-		assert_equal(4, resp.pdu.varbind_list.length)
-		assert_equal('1.2.3.0', resp.pdu.varbind_list[0].name.to_s)
+		assert_equal(3, resp.pdu.varbind_list.length)
+		assert_equal('3.2.1.0', resp.pdu.varbind_list[0].name.to_s)
 		assert_equal(1, resp.pdu.varbind_list[0].value.to_i)
-		assert_equal('1.2.3.5', resp.pdu.varbind_list[1].name.to_s)
+		assert_equal('3.2.1.5', resp.pdu.varbind_list[1].name.to_s)
 		assert_equal(8, resp.pdu.varbind_list[1].value.to_i)
-		assert_equal(SNMP::EndOfMibView, resp.pdu.varbind_list[2].value.class)
-		assert_equal(SNMP::EndOfMibView, resp.pdu.varbind_list[3].value.class)
+		assert_equal(:noSuchName, resp.pdu.error_status)
+		assert_equal(2, resp.pdu.error_index)
 	end
 end

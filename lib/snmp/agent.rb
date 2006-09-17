@@ -36,34 +36,39 @@ module SNMP
 # requests.
 #
 # We call this class a skeleton, though, since as it stands this agent won't
-# do much of anything -- it isn't capable of returning meaningful results. 
-# In order to get data out of it, you'll need to define code to examine the
-# host machine and it's environment and return data.
+# do much of anything -- it only has support for the most basic of system
+# information (sysDescr, sysUptime, sysContact, sysName, and sysLocation).
+# In order to get more interesting data out of it, you'll need to define
+# code to examine the host machine and it's environment and return data.
 #
 # What values get returned is determined by "plugins", small chunks of code
 # that return values that the agent can then send back to the requestor.
-#
-# This agent currently only supports Get requests, but GetNext is high on
-# the priority list (so that we can support walks).
 #
 # = Simple example agent
 #
 #    require 'snmp/agent'
 #
 #    agent = SNMP::Agent.new(:port => 16161, :logger => Logger.new(STDOUT))
-#    agent.add_plugin('1.3.6.1.2.1.1.5.0') { 'hostname.example.com' }
+#    agent.add_plugin('1.3.6.1.2.1.25.1.1.0') do
+#      SNMP::TimeTicks.new(File.read('/proc/uptime').split(' ')[0].to_f * 100).to_i)
+#    end
 #    agent.start()
 #
-# This agent will respond to requests for the given OID (sysName, as it happens)
-# and return the octet string 'hostname.example.com' to that request.  Any other
-# request will be given a 'No such object' response.
+# This agent will respond to requests for the given OID (hrSystemUptime, as
+# it happens) and return the number of time ticks as read from the
+# /proc/uptime file.  In this plugin, we've defined the exact and complete
+# OID that we want to return the value of, but that's by no means necessary
+# -- one plugin can handle a larger number of OIDs in itself by simply
+# defining the 'base' OID it wants to handle, and returning structured data
+# when it's called.  The pre-defined plugin for basic system parameters is a
+# good example of how you can structure your data.
 #
 # = Writing plugins
 #
-# I've tried to make writing plugins as painless as possible, but unfortunately
-# there's still a fair amount of hassle that's required in some circumstances.
-# A basic understanding of how SNMP MIBs and OIDs work will probably help
-# somewhat.
+# I've tried to make writing plugins as painless as possible, but
+# unfortunately there's still a fair amount of hassle that's required in
+# some circumstances. A basic understanding of how SNMP MIBs and OIDs work
+# will help immensely.
 #
 # The basic layout of all plugins is the same -- you map a base OID to a
 # chunk of code, and then any requests for that subtree cause the code to be
@@ -71,21 +76,27 @@ module SNMP
 # This method takes a base OID (as a string or an array of integers) and a
 # block of code to be run when the requested OID matches the given base OID.
 #
-# The result from the block of code should either be a single value
-# (if you want the base OID to return a value itself), a simple array (if
-# the base OID maps to a list of entries), or a tree of arrays that describes
-# the data underneath the base OID.
+# The result from the block of code should either be a single value (if you
+# want the base OID to return a value itself), a simple array or hash (if
+# the base OID maps to a list of entries), or a tree of arrays and hashes
+# that describes the data underneath the base OID.
 #
-# For example, if you want OID .1.2.3 to return the single value 42, you would
-# do something like this:
+# For example, if you want OID .1.2.3 to return the single value 42, you
+# would do something like this:
 #
 #    agent = SNMP::Agent.new
 #    agent.add_plugin('1.2.3') { 42 }
 #
 # Internally, when a Get request for the OID .1.2.3 is received, the agent
 # will find the plugin, run it, and return a PDU containing 'INTEGER: 42'.
-# Any request for an OID below .1.2.3 will be answered with NoSuchObject
-# (unless there's another plugin that handles some subtree of .1.2.3).
+# Any request for an OID below .1.2.3 will be answered with NoSuchObject.
+#
+# On the topic of plugins and subtrees: you cannot have a plugin respond
+# to a subtree of another plugin.  That is, if you have one plugin which
+# has registered itself as handling '1.2.3', you cannot have another plugin
+# that says it handles '1.2' or '1.2.3.4' -- in either case, the two plugins
+# will conflict.  Whether this behaviour is fixed in the future depends on
+# whether it turns out to be a limitation that causes major hassle.
 #
 # There is a limted amount of type interpolation in the plugin running code.
 # At present, integer values will be kept as integers, and most everything
@@ -103,9 +114,6 @@ module SNMP
 #
 # That will get you OIDs .1.2.3.0 through .1.2.3.8 containing a word each from
 # the ever-famous typing test.
-#
-# At present, it is not possible to produce a "sparse" list (eg a process list,
-# like hrSWRunName), though that is a planned feature.
 #
 # To produce deeper trees of data within a single plugin, you can have
 # arrays within arrays, like this:
@@ -129,23 +137,60 @@ module SNMP
 # runs out before getting to a scalar value, or the arrays run out while there's
 # will elements of the OID, then NoSuchObject is returned.
 #
+# You can produce "sparse" lists of values (such as required by the hrRun table)
+# by using a hash and giving the values for each OID as values to integer keys.
+# If you try to use non-integer keys in your hash things will explode, however.
+#
 
 class Agent
-	DefaultSettings = { :listen_port => 161,
-							  :max_packet => 8000,
-							  :logger => Logger.new('/dev/null')
-							}
+	DefaultSettings = { :port => 161,
+	                    :max_packet => 8000,
+	                    :logger => Logger.new('/dev/null'),
+	                    :sysContact => "Someone",
+	                    :sysName => "Ruby SNMP agent",
+	                    :sysLocation => "Unknown"
+	                  }
 
+	# Create a new agent.
+	#
+	# You can provide a list of settings to the new agent, as a hash of
+	# symbols and values.  Currently valid settings (and their defaults)
+	# are as follows:
+	#
+	#   :port -- The UDP port to listen on.  Default: 161
+	#   :max_packet -- The largest UDP packet that will be read.  Default: 8000
+	#   :logger -- A Logger object to write all messages to.  Default: sends all
+	#             messages to /dev/null.
+	#   :sysContact -- A string to provide when an SNMP request is made for
+	#             sysContact.  Default: "Someone"
+	#   :sysName -- A string to provide when an SNMP request is made for
+	#             sysName.  Default: "Ruby SNMP agent"
+	#   :sysLocation -- A string to provide when an SNMP request is made for
+	#             sysLocation.  Default: "Unknown"
+	#
 	def initialize(settings = {})
 		settings = DefaultSettings.merge(settings)
 		
-		@port = settings[:listen_port]
+		@port = settings[:port]
 		@log = settings[:logger]
 		@max_packet = settings[:max_packet]
 		
 		@mib_tree = MibNode.new
+		
+		agent_start_time = Time.now
+		self.add_plugin('1.3.6.1.2.1.1') { {1 => [`uname -a`],
+		                                    3 => [SNMP::TimeTicks.new(((Time.now - agent_start_time) * 100).to_i)],
+		                                    4 => ["Someone"],
+		                                    5 => ["RubySNMP Agent"],
+		                                    6 => ["Unknown"]
+		                                   }
+		                                 }
 	end
 
+	# Handle a new OID.
+	#
+	# See the class documentation for full information on how to use this method.
+	#
 	def add_plugin(base_oid, &block)
 		base_oid = ObjectId.new(base_oid) unless base_oid.is_a? ObjectId
 
@@ -162,9 +207,17 @@ class Agent
 		end
 	end
 
+	# Main connection handling loop.
+	#
+	# Call this method when you're ready to respond to some SNMP messages.
+	#
+	# Caution: this method blocks (does not return until it's finished
+	# serving SNMP requests).  As a result, you should run it in a separate
+	# thread or catch one or more signals so that you can actually call
+	# +shutdown+ to stop the agent.
 	def start
 		@socket = UDPSocket.open
-		@socket.bind(nil, listen_port)
+		@socket.bind(nil, @port)
 
 		@log.info "SNMP agent running"
 		loop do
@@ -177,42 +230,38 @@ class Agent
 				case message.pdu
 					when GetRequest
 						@log.debug "GetRequest received"
-						response = self.process_get_request(message)
+						response = process_get_request(message)
 					when GetNextRequest
 						@log.debug "GetNextRequest received"
-						response = message.response
-						response.pdu.varbind_list.each do |v|
-							@log.debug "OID: #{v.name}"
-							if v.name.to_s == '1.3.6.1.2.1'
-								v.name = SNMP::ObjectId.new('1.3.6.1.2.1.1')
-							else
-								v.name[-1] += 1 unless v.name[-1] > 10
-							end
-							v.value = SNMP::Integer.new(v.name[-1])
-							@log.debug "The next OID on platform 1 is #{v.name}"
-						end
-					when SetRequest
-						response = message.response
+						response = process_get_next_request(message)
 					else
-						raise "invalid message #{message.inspect}"
+						raise SNMP::UnknownMessageError.new("invalid message #{message.inspect}")
 				end
 				encoded_message = response.encode
 				n=@socket.send(encoded_message, 0, remote_info[3], remote_info[1])
 				@log.debug encoded_message.inspect
-			rescue => e
+			rescue SNMP::UnknownMessageError => e
 				@log.error e
-				shutdown
+			rescue IOError => e
+				break if e.message == 'stream closed'
+				@log.warn "IO Error: #{e.message}"
+			rescue => e
+				@log.error e.message
 			end
 		end
 	end
-	
+
+	# Stop the running agent.
+	#
+	# Close the socket and stop the agent from running.  It can be started again
+	# just by calling +start+ again.  You will, of course, need to be catching
+	# signals or be multi-threaded in order to be able to actually call this
+	# method, because +start+ itself is a blocking method.
+	#
 	def shutdown
 		@log.info "SNMP agent stopping"
 		@socket.close
-		exit
 	end
-
-	alias stop :shutdown
 
 	private
 	def process_get_request(message)
@@ -227,13 +276,19 @@ class Agent
 
 	def process_get_next_request(message)
 		response = message.response
-		response.pdu.varbind_list.each do |v|
+		response.pdu.varbind_list.length.times do |idx|
+			v = response.pdu.varbind_list[idx]
 			@log.debug "OID: #{v.name}"
-			v.name = self.next_oid_in_tree(v.name)
-			v.value = if SNMP::EndOfMibView == v.name.class
-				v.name
+			v.name = next_oid_in_tree(v.name)
+			@log.debug "pgnr: Next OID is #{v.name.to_s}"
+			if SNMP::EndOfMibView == v.name
+				@log.debug "Setting error status"
+				v.name = ObjectId.new('0')
+				response.pdu.error_status = :noSuchName
+				response.pdu.error_index = idx
 			else
-				get_snmp_value(v.name)
+				@log.debug "Regular value"
+				v.value = get_snmp_value(v.name)
 			end
 		end
 	
@@ -249,7 +304,9 @@ class Agent
 		elsif data_value.is_a? String
 			SNMP::OctetString.new(data_value)
 		elsif data_value.nil? or data_value.is_a? MibNode
-			SNMP::NoSuchObject.new
+			SNMP::NoSuchObject
+		elsif data_value.is_a? SNMP::Integer
+			data_value
 		else
 			SNMP::OctetString.new(data_value.to_s)
 		end
@@ -314,7 +371,8 @@ class Agent
 		# Special case: if our next_oid is empty, then we've ended up off the end of the
 		# MIB and it's time to send back an error
 		if next_oid.length == 0
-			return SNMP::EndOfMibView.new
+			@log.debug "Returning EndOfMibView"
+			return SNMP::EndOfMibView
 		end
 
 		# So, we start from where we left off above, and then walk through that subtree
@@ -422,6 +480,12 @@ end
 class TraversesPluginError < StandardError
 end
 
+# To signal that the agent received a message that it didn't know how to
+# handle.
+class UnknownMessageError < StandardError
+end
+
+
 end
 
 class Array
@@ -443,7 +507,7 @@ class TrueClass
 end
 
 if $0 == __FILE__
-agent = SNMP::Agent.new(1061)
+agent = SNMP::Agent.new(:port => 1061, :logger => Logger.new(STDOUT))
 trap("INT") { agent.shutdown }
 agent.start
 end
