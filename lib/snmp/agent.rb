@@ -266,9 +266,9 @@ class Agent
 				n=@socket.send(encoded_message, 0, remote_info[3], remote_info[1])
 				@log.debug encoded_message.inspect
 			rescue SNMP::UnknownMessageError => e
-				@log.error e
+				@log.error e.message
 			rescue IOError => e
-				break if e.message == 'stream closed'
+				break if e.message == 'stream closed' or e.message == 'closed stream'
 				@log.warn "IO Error: #{e.message}"
 			rescue => e
 				@log.error e.message
