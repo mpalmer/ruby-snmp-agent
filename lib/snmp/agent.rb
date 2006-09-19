@@ -207,6 +207,31 @@ class Agent
 		end
 	end
 
+	# Add a directory full of plugins to the agent.
+	#
+	# To make it as simple as possible to provide plugins to the SNMP agent,
+	# you can create a directory and fill it with files containing plugin
+	# code, then tell the agent where to find all that juicy code.
+	#
+	# The files in the plugin directory are simply named after the base OID,
+	# and the contents are the code you want to execute, exactly as you would
+	# put it inside a block.
+	#
+	def add_plugin_dir(dir)
+		orig_verbose = $VERBOSE
+		$VERBOSE = nil
+		Dir.entries(dir).each do |f|
+			next unless f =~ /^([0-9]\.?)+$/
+			@log.info("Loading plugin #{File.join(dir, f)}")
+			begin
+				self.add_plugin(f, &eval("lambda do\n#{File.read(File.join(dir, f))}\nend\n"))
+			rescue SyntaxError => e
+				@log.warn "Syntax error in #{File.join(dir, f)}: #{e.message}"
+			end
+		end
+		$VERBOSE = orig_verbose
+	end
+
 	# Main connection handling loop.
 	#
 	# Call this method when you're ready to respond to some SNMP messages.

@@ -1,5 +1,7 @@
 require File.dirname(__FILE__) + '/test_helper.rb'
 
+require 'tmpdir'
+require 'fileutils'
 require 'snmp/agent'
 
 class SNMP::Agent
@@ -140,5 +142,35 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		assert_equal(5, a.get_mib_entry('1.2.3.4'))
 		assert_equal('1.2.3.5', a.next_oid_in_tree('1.2.3.4').to_s)
 
+	end
+
+	def test_dir_of_plugins
+		tmpdir = File.join(Dir::tmpdir, "rubysnmp.#{$$}")
+		Dir.mkdir(tmpdir)
+		
+		File.open(tmpdir + '/3.2.1', 'w') {|fd|
+			fd.puts "42"
+		}
+		
+		File.open(tmpdir + '/4', 'w') {|fd|
+			fd.puts "[[Time.now.to_i]]"
+		}
+
+		File.open(tmpdir + '/README', 'w') {|fd|
+			fd.puts "This directory is full of SNMP plugins, but this file won't be read."
+		}
+		
+		File.open(tmpdir + '/6.6.6', 'w') {|fd|
+			fd.puts "Not valid ruby code.  That's OK though, we should just be able to ignore it."
+		}
+
+		a = SNMP::Agent.new
+		
+		a.add_plugin_dir(tmpdir)
+		FileUtils.rm_rf(tmpdir)
+		
+		assert_equal(42, a.get_mib_entry('3.2.1'))
+		assert_equal(nil, a.get_mib_entry('3.2.1.0'))
+		assert((Time.now.to_i - a.get_mib_entry('4.0.0')).abs < 2)
 	end
 end
