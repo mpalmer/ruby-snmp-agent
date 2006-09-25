@@ -141,6 +141,45 @@ module SNMP
 # by using a hash and giving the values for each OID as values to integer keys.
 # If you try to use non-integer keys in your hash things will explode, however.
 #
+# = Caching plugin data
+#
+# Often, running a plugin to collect data is quite expensive -- if you're
+# calling out to a web service or doing a lot of complex calculations, and
+# generating a large resulting tree, you really don't want to be re-doing
+# all that work for every SNMP request (and remember, during a walk, that
+# tree is going to be completely recreated for every element walked in that
+# tree).
+#
+# To prevent this problem, the SNMP agent provides a fairly simple caching
+# mechanism within itself.  If you return the data from your plugin as a
+# hash, you can add an extra element to that hash, with a key of +:cache+,
+# which should have a value of how many seconds you want the agent to retain
+# your data for before re-running the plugin.  So, a simple cached data tree
+# might look like:
+#
+#   {:cache => 30, 0 => [0, 1, 2], 1 => ['a', 'b', 'c']}
+#
+# So the agent will cache the given data (+{0 => [...], 1 => [...]}+) for
+# 30 seconds before running the plugin again to get a new set of data.
+#
+# How long should you cache data for?  That's up to you.  The tradeoffs are
+# between the amount of time it takes to create the data tree, how quickly
+# the data "goes stale", and how large the data tree is.  The longer it
+# takes to re-create the tree and the larger the tree is, the longer you
+# should cache for.  Large trees should be cached for longer because big
+# trees take longer to walk, and it'd be annoying if, half-way through the
+# walk, the plugin got called again.  How long the data is relevant for is
+# essentially the upper bound on cache time -- there's no point in keeping
+# data around for longer than it's valid.
+#
+# What if, for some reason, you can't come up with a reasonable cache
+# timeout value? You've got a huge tree, that takes ages to produce, but it
+# needs to be refreshed really often.  Try splitting your single monolithic
+# plugin into smaller "chunks", each of which can be cached separately. The
+# smaller trees will take less time to walk, and hopefully you won't need to
+# do the full set of processing to obtain the subset of values, so it'll be
+# quicker to process.
+# 
 
 class Agent
 	DefaultSettings = { :port => 161,
@@ -201,7 +240,7 @@ class Agent
 			raise ArgumentError.new("Adding plugin #{base_oid} would encroach on the subtree of an existing plugin")
 		end
 		if parent[our_node].nil?
-			parent[our_node] = block
+			parent[our_node] = MibNodePlugin.new(&block)
 		else
 			raise ArgumentError.new("OID #{base_oid} is already occupied by something; cannot put a plugin here")
 		end
@@ -266,12 +305,12 @@ class Agent
 				n=@socket.send(encoded_message, 0, remote_info[3], remote_info[1])
 				@log.debug encoded_message.inspect
 			rescue SNMP::UnknownMessageError => e
-				@log.error e.message
+				@log.error "Unknown SNMP message: #{e.message}"
 			rescue IOError => e
 				break if e.message == 'stream closed' or e.message == 'closed stream'
 				@log.warn "IO Error: #{e.message}"
 			rescue => e
-				@log.error e.message
+				@log.error "Error in handling message: #{e.message}"
 			end
 		end
 	end
@@ -371,7 +410,7 @@ class Agent
 		oid.length.times do |oid_idx|
 			@log.debug "Level #{oid_idx} in the tree"
 			@log.debug "Node in our OID is #{oid[oid_idx]}"
-			current_node = current_node.call if current_node.is_a? Proc
+			current_node = current_node.plugin_value if current_node.is_a? MibNodePlugin
 			
 			# Are we at a dead-end in the tree?
 			break if current_node.nil?
@@ -485,11 +524,11 @@ class MibNode < Hash
 		# Dereference into the subtree. Let's see what we've got here, shall we?
 		next_node = self[idx]
 		
-		if next_node.is_a? Proc
+		if next_node.is_a? MibNodePlugin
 			if opts[:allow_plugins].false?
 				raise SNMP::TraversesPluginError.new("Cannot traverse plugin")
 			else
-				next_node = next_node.call
+				next_node = next_node.plugin_value
 				if next_node.is_a? Array or next_node.is_a? Hash
 					next_node = MibNode.new(next_node)
 				end
@@ -500,6 +539,28 @@ class MibNode < Hash
 	end
 end
 
+class MibNodePlugin
+	def initialize(&block)
+		@proc = block
+		@cached_value = nil
+		@cache_until = 0
+	end
+	
+	def plugin_value
+		if Time.now.to_i > @cache_until
+			@cached_value = @proc.call
+			if @cached_value.is_a? Hash
+				unless @cached_value[:cache].nil?
+					@cache_until = Time.now.to_i + @cached_value[:cache]
+					@cached_value.delete :cache
+				end
+			end
+		end
+		
+		@cached_value
+	end
+end
+			
 # Raised when we have asked MibNode#get_node to get a node but have
 # told it not to traverse plugins.
 class TraversesPluginError < StandardError
@@ -509,7 +570,6 @@ end
 # handle.
 class UnknownMessageError < StandardError
 end
-
 
 end
 

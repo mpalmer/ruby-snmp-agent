@@ -46,16 +46,16 @@ class MibNodeTest < Test::Unit::TestCase
 		assert_equal(4, n_[2])
 	end
 
-	def test_now_with_added_proc
-		n = SNMP::MibNode.new({2 => Proc.new { 42 }})
+	def test_now_with_added_plugin
+		n = SNMP::MibNode.new({2 => SNMP::MibNodePlugin.new { 42 }})
 		
 		assert_equal(1, n.length)
 		assert_equal([2], n.keys)
 		assert_equal(42, n.get_node([2]))
 
-		n = SNMP::MibNode.new({2 => Proc.new {[42]}})
+		n = SNMP::MibNode.new({2 => SNMP::MibNodePlugin.new {[42]}})
 		assert_equal(SNMP::MibNode, n.get_node([2]).class)
-		assert_equal(Proc, n[2].class)
+		assert_equal(SNMP::MibNodePlugin, n[2].class)
 		assert_equal(42, n.get_node('2.0'))
 		assert_equal(nil, n.get_node('2.1'))
 	end
@@ -76,7 +76,7 @@ class MibNodeTest < Test::Unit::TestCase
 	end
 	
 	def test_get_node_through_proc
-		n = SNMP::MibNode.new(1 => {2 => {3 => Proc.new {[[0, 1, 2], [10, 11, 12], [20, 21, 22]]}}})
+		n = SNMP::MibNode.new(1 => {2 => {3 => SNMP::MibNodePlugin.new {[[0, 1, 2], [10, 11, 12], [20, 21, 22]]}}})
 		
 		n_ = n.get_node(SNMP::ObjectId.new('1.2.3.1'))
 		assert_equal(SNMP::MibNode, n_.class)
@@ -85,8 +85,8 @@ class MibNodeTest < Test::Unit::TestCase
 	end
 
 	def test_get_node_bomb_on_plugin
-		n = SNMP::MibNode.new(1 => {2 => {3 => Proc.new {[0, 1, 2]}}})
-		h = {1 => {2 => {3 => Proc.new {[0, 1, 2]}}}}
+		n = SNMP::MibNode.new(1 => {2 => {3 => SNMP::MibNodePlugin.new {[0, 1, 2]}}})
+		h = {1 => {2 => {3 => SNMP::MibNodePlugin.new {[0, 1, 2]}}}}
 
 		assert_raise(SNMP::TraversesPluginError) { n.get_node('1.2.3.0', :allow_plugins => false) }
 	end
