@@ -281,7 +281,7 @@ class Agent
 	# +shutdown+ to stop the agent.
 	def start
 		@socket = UDPSocket.open
-		@socket.bind(nil, @port)
+		@socket.bind('', @port)
 
 		@log.info "SNMP agent running"
 		loop do
