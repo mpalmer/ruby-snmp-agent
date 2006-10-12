@@ -183,4 +183,13 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3.4'))
 		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('4.3.2.1'))
 	end
+
+	def test_exception_throwing_plugin
+		a = SNMP::Agent.new
+		
+		a.add_plugin('1.2.3') { raise "Broooooken!" }
+		
+		assert_equal(nil, a.get_mib_entry('1.2.3.4'))
+		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3.4'))
+	end
 end

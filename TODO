@@ -1,6 +1,6 @@
-* Handle exceptions thrown by plugins deeper earlier; they currently bubble
-  up to the main handler loop and it confuses things terribly, resulting in
-  a timeout from the client.
+* Get a logger object into MibNodes, so we can record various debugging
+  problems, as well as more serious problems (particularly plugins that
+  decide to throw exceptions).
   
 * Possibly rework the add_plugin_dir handler (or provide another interface)
   that is more explicit in it's registration functionality.  I've decided

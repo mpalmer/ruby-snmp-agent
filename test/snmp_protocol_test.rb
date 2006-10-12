@@ -55,7 +55,6 @@ class SnmpProtocolTest < Test::Unit::TestCase
 		assert_equal(SNMP::NoSuchObject, resp.pdu.varbind_list[2].value)
 	end
 
-	# This is where things get *really* tricky
 	def test_get_next_request
 		a = SNMP::Agent.new
 		
@@ -74,5 +73,20 @@ class SnmpProtocolTest < Test::Unit::TestCase
 		assert_equal(8, resp.pdu.varbind_list[1].value.to_i)
 		assert_equal(:noSuchName, resp.pdu.error_status)
 		assert_equal(2, resp.pdu.error_index)
+	end
+
+	def test_exceptional_plugin
+		a = SNMP::Agent.new
+		
+		a.add_plugin('1.2.3') { raise "Broooooken!" }
+		
+		pdu = SNMP::GetRequest.new(1, SNMP::VarBindList.new('1.2.3.4'))
+		msg = SNMP::Message.new(1, 'public', pdu)
+		
+		resp = a.process_get_request(msg)
+		
+		assert_equal(SNMP::Message, resp.class)
+		assert_equal(1, resp.pdu.varbind_list.length)
+		assert_equal(SNMP::NoSuchObject, resp.pdu.varbind_list[0].value)
 	end
 end

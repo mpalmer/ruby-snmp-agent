@@ -548,7 +548,14 @@ class MibNodePlugin
 	
 	def plugin_value
 		if Time.now.to_i > @cache_until
-			@cached_value = @proc.call
+			begin
+				@cached_value = @proc.call
+			rescue
+				# Bloody error-throwing plugins; we'll ignore for now, but really
+				# should get a logger into nodes so we can log this sort of
+				# shenanigans
+				@cached_value = nil
+			end
 			if @cached_value.is_a? Hash
 				unless @cached_value[:cache].nil?
 					@cache_until = Time.now.to_i + @cached_value[:cache]

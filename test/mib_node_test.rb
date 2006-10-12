@@ -84,6 +84,12 @@ class MibNodeTest < Test::Unit::TestCase
 		assert_equal(11, n_[1])
 	end
 
+	def test_get_exception_raising_node
+		n = SNMP::MibNode.new(1 => {2 => {3 => SNMP::MibNodePlugin.new { raise "Broooooken!" }}})
+
+		assert_equal(nil, n.get_node(SNMP::ObjectId.new('1.2.3.1')))
+	end
+
 	def test_get_node_bomb_on_plugin
 		n = SNMP::MibNode.new(1 => {2 => {3 => SNMP::MibNodePlugin.new {[0, 1, 2]}}})
 		h = {1 => {2 => {3 => SNMP::MibNodePlugin.new {[0, 1, 2]}}}}
