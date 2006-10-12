@@ -173,4 +173,14 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		assert_equal(nil, a.get_mib_entry('3.2.1.0'))
 		assert((Time.now.to_i - a.get_mib_entry('4.0.0')).abs < 2)
 	end
+	
+	def test_empty_plugin_return
+		a = SNMP::Agent.new
+		
+		a.add_plugin('1.2.3.4') { {} }
+		a.add_plugin('4.3.2.1') { [] }
+		
+		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('1.2.3.4'))
+		assert_equal(SNMP::NoSuchObject, a.get_snmp_value('4.3.2.1'))
+	end
 end

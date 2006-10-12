@@ -1,5 +1,3 @@
-* Handle an empty array/hash coming back from a plugin.
-
 * Handle exceptions thrown by plugins deeper earlier; they currently bubble
   up to the main handler loop and it confuses things terribly, resulting in
   a timeout from the client.
