@@ -54,14 +54,14 @@ module SNMP
 #    end
 #    agent.start()
 #
-# This agent will respond to requests for the given OID (hrSystemUptime, as
-# it happens) and return the number of time ticks as read from the
-# /proc/uptime file.  In this plugin, we've defined the exact and complete
-# OID that we want to return the value of, but that's by no means necessary
-# -- one plugin can handle a larger number of OIDs in itself by simply
-# defining the 'base' OID it wants to handle, and returning structured data
-# when it's called.  The pre-defined plugin for basic system parameters is a
-# good example of how you can structure your data.
+# This agent will respond to requests for the given OID (hrSystemUptime in
+# this case, as it happens) and return the number of time ticks as read from
+# the /proc/uptime file.  In this plugin, we've defined the exact and
+# complete OID that we want to return the value of, but that's by no means
+# necessary -- one plugin can handle a larger number of OIDs in itself by
+# simply defining the 'base' OID it wants to handle, and returning
+# structured data when it's called.  The pre-defined plugin for basic system
+# parameters is a good (if basic) example of how you structure your data.
 #
 # = Writing plugins
 #
@@ -260,14 +260,22 @@ class Agent
 		orig_verbose = $VERBOSE
 		$VERBOSE = nil
 		Dir.entries(dir).each do |f|
-			next unless f =~ /^([0-9]\.?)+$/
-			@log.info("Loading plugin #{File.join(dir, f)}")
-			begin
-				self.add_plugin(f, &eval("lambda do\n#{File.read(File.join(dir, f))}\nend\n"))
-			rescue SyntaxError => e
-				@log.warn "Syntax error in #{File.join(dir, f)}: #{e.message}"
+			@log.info("Looking at potential plugin #{File.join(dir, f)}")
+			if f =~ /^([0-9]\.?)+$/
+				begin
+					self.add_plugin(f, &eval("lambda do\n#{File.read(File.join(dir, f))}\nend\n"))
+				rescue SyntaxError => e
+					@log.warn "Syntax error in #{File.join(dir, f)}: #{e.message}"
+				end
+			elsif f =~ /\.rb$/
+				begin
+					self.instance_eval(File.read(File.join(dir, f)))
+				rescue SyntaxError => e
+					@log.warn "Syntax error in #{File.join(dir, f)}: #{e.message}"
+				end
 			end
 		end
+			
 		$VERBOSE = orig_verbose
 	end
 

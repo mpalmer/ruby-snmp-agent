@@ -173,6 +173,23 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		assert_equal(nil, a.get_mib_entry('3.2.1.0'))
 		assert((Time.now.to_i - a.get_mib_entry('4.0.0')).abs < 2)
 	end
+
+	def test_rb_plugin_files
+		tmpdir = File.join(Dir::tmpdir, "rubysnmp.#{$$}")
+		Dir.mkdir(tmpdir)
+		
+		File.open(tmpdir + '/foo.rb', 'w') {|fd|
+			fd.puts "self.add_plugin('3.2.1') { 42 }"
+		}
+		
+		a = SNMP::Agent.new
+		
+		a.add_plugin_dir(tmpdir)
+		FileUtils.rm_rf(tmpdir)
+		
+		assert_equal(42, a.get_mib_entry('3.2.1'))
+		assert_equal(nil, a.get_mib_entry('3.2.1.0'))
+	end
 	
 	def test_empty_plugin_return
 		a = SNMP::Agent.new
