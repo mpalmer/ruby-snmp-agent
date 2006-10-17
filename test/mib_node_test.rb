@@ -123,4 +123,16 @@ class MibNodeTest < Test::Unit::TestCase
 		n = SNMP::MibNodePlugin.new(:logger => Logger.new('/dev/null')) { 42 }
 		assert_equal Logger, n.logger.class
 	end
+
+	def test_implicit_logger
+		SNMP::MibNode.class_eval("attr_reader :logger")
+		SNMP::MibNodePlugin.class_eval("attr_reader :logger")
+		
+		n = SNMP::MibNode.new(1 => {2 => {3 => 42}})
+		assert_equal Logger, n.logger.class
+
+		n = SNMP::MibNodePlugin.new { 42 }
+		assert_equal Logger, n.logger.class
+	end
+		
 end

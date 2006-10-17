@@ -460,7 +460,7 @@ end
 
 class MibNode < Hash
 	def initialize(initial_data = {})
-		@logger = initial_data.delete(:logger) if initial_data.keys.include?(:logger)
+		@logger = initial_data.keys.include?(:logger) ? initial_data.delete(:logger) : Logger.new('/dev/null')
 
 		initial_data.keys.each do |k|
 			raise ArgumentError.new("MIB key #{k} is not an integer") unless k.is_a? ::Integer
@@ -551,7 +551,7 @@ end
 
 class MibNodePlugin
 	def initialize(opts = {}, &block)
-		@logger = opts[:logger] if opts[:logger]
+		@logger = opts[:logger].nil? ? Logger.new('/dev/null') : opts[:logger]
 		@proc = block
 		@cached_value = nil
 		@cache_until = 0
