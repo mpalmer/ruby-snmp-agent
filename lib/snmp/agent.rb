@@ -214,7 +214,7 @@ class Agent
 		@log = settings[:logger]
 		@max_packet = settings[:max_packet]
 		
-		@mib_tree = MibNode.new
+		@mib_tree = MibNode.new(:logger => @log)
 		
 		agent_start_time = Time.now
 		self.add_plugin('1.3.6.1.2.1.1') { {1 => [`uname -a`],
@@ -240,7 +240,7 @@ class Agent
 			raise ArgumentError.new("Adding plugin #{base_oid} would encroach on the subtree of an existing plugin")
 		end
 		if parent[our_node].nil?
-			parent[our_node] = MibNodePlugin.new(&block)
+			parent[our_node] = MibNodePlugin.new(:logger => @log, &block)
 		else
 			raise ArgumentError.new("OID #{base_oid} is already occupied by something; cannot put a plugin here")
 		end
@@ -460,13 +460,13 @@ end
 
 class MibNode < Hash
 	def initialize(initial_data = {})
-		@logger = initial_data.keys.include?(:logger) ? initial_data.delete(:logger) : Logger.new('/dev/null')
+		@log = initial_data.keys.include?(:logger) ? initial_data.delete(:logger) : Logger.new('/dev/null')
 
 		initial_data.keys.each do |k|
 			raise ArgumentError.new("MIB key #{k} is not an integer") unless k.is_a? ::Integer
 			self[k] = initial_data[k]
 			if self[k].is_a? Array or self[k].is_a? Hash
-				self[k] = MibNode.new(self[k])
+				self[k] = MibNode.new(self[k].to_hash.merge(:logger => @log))
 			end
 		end
 	end
@@ -486,7 +486,7 @@ class MibNode < Hash
 		# Are we creating new trees as we go?
 		if opts[:make_new_nodes].true?
 			if self[next_idx].nil?
-				self[next_idx] = MibNode.new
+				self[next_idx] = MibNode.new(:logger => @log)
 			end
 		end
 		
@@ -540,7 +540,7 @@ class MibNode < Hash
 			else
 				next_node = next_node.plugin_value
 				if next_node.is_a? Array or next_node.is_a? Hash
-					next_node = MibNode.new(next_node)
+					next_node = MibNode.new(next_node.to_hash.merge(:logger => @log))
 				end
 			end
 		end
@@ -551,7 +551,7 @@ end
 
 class MibNodePlugin
 	def initialize(opts = {}, &block)
-		@logger = opts[:logger].nil? ? Logger.new('/dev/null') : opts[:logger]
+		@log = opts[:logger].nil? ? Logger.new('/dev/null') : opts[:logger]
 		@proc = block
 		@cached_value = nil
 		@cache_until = 0
@@ -596,6 +596,12 @@ class Array
 		k = []
 		self.length.times { |v| k << v }
 		k
+	end
+	
+	def to_hash
+		h = {}
+		self.keys.each {|k| h[k] = self[k]}
+		h
 	end
 end
 

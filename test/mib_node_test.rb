@@ -114,25 +114,25 @@ class MibNodeTest < Test::Unit::TestCase
 	end
 
 	def test_provide_a_logger
-		SNMP::MibNode.class_eval("attr_reader :logger")
-		SNMP::MibNodePlugin.class_eval("attr_reader :logger")
+		SNMP::MibNode.class_eval("attr_reader :log")
+		SNMP::MibNodePlugin.class_eval("attr_reader :log")
 		
 		n = SNMP::MibNode.new(1 => {2 => {3 => 42}}, :logger => Logger.new('/dev/null'))
-		assert_equal Logger, n.logger.class
+		assert_equal Logger, n.log.class
 
 		n = SNMP::MibNodePlugin.new(:logger => Logger.new('/dev/null')) { 42 }
-		assert_equal Logger, n.logger.class
+		assert_equal Logger, n.log.class
 	end
 
 	def test_implicit_logger
-		SNMP::MibNode.class_eval("attr_reader :logger")
-		SNMP::MibNodePlugin.class_eval("attr_reader :logger")
+		SNMP::MibNode.class_eval("attr_reader :log")
+		SNMP::MibNodePlugin.class_eval("attr_reader :log")
 		
 		n = SNMP::MibNode.new(1 => {2 => {3 => 42}})
-		assert_equal Logger, n.logger.class
+		assert_equal Logger, n.log.class
 
 		n = SNMP::MibNodePlugin.new { 42 }
-		assert_equal Logger, n.logger.class
+		assert_equal Logger, n.log.class
 	end
 		
 end
