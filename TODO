@@ -8,5 +8,11 @@
 * Allow the restriction of requests based on community name.
 
 * Support symbolic OID specification in add_plugin -- that is, allow you to
-  specify a MIB name rather than a giant opaque collection of numbers.  I
-  suspect it may already be available, but it'll need to be tested.
+  specify a MIB name rather than a giant opaque collection of numbers.  This
+  involves detecting that the OID given isn't already an ObjectId, having an
+  SNMP::MIB object on hand, loading the appropriate MIB module into the MIB
+  object (via SNMP::MIB#load_module), and then calling SNMP::MIB#oid with
+  the symbolic name.  That's going to be a bit of a pain, especially when
+  you consider the requirement to pre-register the modules -- unless we just
+  unconditionally load all modules at agent startup -- it's not going to be
+  that much effort, after all...
