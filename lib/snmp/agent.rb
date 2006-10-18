@@ -561,10 +561,8 @@ class MibNodePlugin
 		if Time.now.to_i > @cache_until
 			begin
 				@cached_value = @proc.call
-			rescue
-				# Bloody error-throwing plugins; we'll ignore for now, but really
-				# should get a logger into nodes so we can log this sort of
-				# shenanigans
+			rescue => e
+				@log.warn("Plugin threw an exception: #{e.message}\n#{e.backtrace}")
 				@cached_value = nil
 			end
 			if @cached_value.is_a? Hash

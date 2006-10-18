@@ -1,7 +1,3 @@
-* Get a logger object into MibNodes, so we can record various debugging
-  problems, as well as more serious problems (particularly plugins that
-  decide to throw exceptions).
-  
 * Possibly rework the add_plugin_dir handler (or provide another interface)
   that is more explicit in it's registration functionality.  I've decided
   that the implicit way I'm going it now is a bit half-assed, isn't very
