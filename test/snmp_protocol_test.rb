@@ -7,15 +7,21 @@ class SNMP::Agent
 end
 
 class SnmpProtocolTest < Test::Unit::TestCase
-	def test_single_get
-		a = SNMP::Agent.new
+	def setup
+		@a = SNMP::Agent.new
 		
-		a.add_plugin('1.2.3') { 42 }
+		class << @a
+			public :process_get_request, :process_get_next_request
+		end
+	end
+	
+	def test_single_get
+		@a.add_plugin('1.2.3') { 42 }
 		
 		pdu = SNMP::GetRequest.new(1, SNMP::VarBindList.new('1.2.3'))
 		msg = SNMP::Message.new(1, 'public', pdu)
 		
-		resp = a.process_get_request(msg)
+		resp = @a.process_get_request(msg)
 		
 		assert_equal(SNMP::Message, resp.class)
 		assert_equal(1, resp.pdu.varbind_list.length)
@@ -24,14 +30,12 @@ class SnmpProtocolTest < Test::Unit::TestCase
 	end
 	
 	def test_no_such_object
-		a = SNMP::Agent.new
-		
-		a.add_plugin('1.2.3') { 42 }
+		@a.add_plugin('1.2.3') { 42 }
 		
 		pdu = SNMP::GetRequest.new(1, SNMP::VarBindList.new('1.2.3.4'))
 		msg = SNMP::Message.new(1, 'public', pdu)
 		
-		resp = a.process_get_request(msg)
+		resp = @a.process_get_request(msg)
 		
 		assert_equal(SNMP::Message, resp.class)
 		assert_equal(1, resp.pdu.varbind_list.length)
@@ -39,14 +43,12 @@ class SnmpProtocolTest < Test::Unit::TestCase
 	end
 
 	def test_multi_get_request
-		a = SNMP::Agent.new
-		
-		a.add_plugin('1.2.3') { 42 }
+		@a.add_plugin('1.2.3') { 42 }
 		
 		pdu = SNMP::GetRequest.new(1, SNMP::VarBindList.new(['1.3.6.1', '1.2.3', '1.2.3.4']))
 		msg = SNMP::Message.new(1, 'public', pdu)
 		
-		resp = a.process_get_request(msg)
+		resp = @a.process_get_request(msg)
 		
 		assert_equal(SNMP::Message, resp.class)
 		assert_equal(3, resp.pdu.varbind_list.length)
@@ -56,14 +58,12 @@ class SnmpProtocolTest < Test::Unit::TestCase
 	end
 
 	def test_get_next_request
-		a = SNMP::Agent.new
-		
-		a.add_plugin('3.2.1') { [1, 1, 2, 3, 5, 8, 13] }
+		@a.add_plugin('3.2.1') { [1, 1, 2, 3, 5, 8, 13] }
 		
 		pdu = SNMP::GetNextRequest.new(1, SNMP::VarBindList.new(['3.2.1', '3.2.1.4', '3.2.1.6']))
 		msg = SNMP::Message.new(1, 'public', pdu)
 		
-		resp = a.process_get_next_request(msg)
+		resp = @a.process_get_next_request(msg)
 		
 		assert_equal(SNMP::Message, resp.class)
 		assert_equal(3, resp.pdu.varbind_list.length)
@@ -76,14 +76,12 @@ class SnmpProtocolTest < Test::Unit::TestCase
 	end
 
 	def test_exceptional_plugin
-		a = SNMP::Agent.new
-		
-		a.add_plugin('1.2.3') { raise "Broooooken!" }
+		@a.add_plugin('1.2.3') { raise "Broooooken!" }
 		
 		pdu = SNMP::GetRequest.new(1, SNMP::VarBindList.new('1.2.3.4'))
 		msg = SNMP::Message.new(1, 'public', pdu)
 		
-		resp = a.process_get_request(msg)
+		resp = @a.process_get_request(msg)
 		
 		assert_equal(SNMP::Message, resp.class)
 		assert_equal(1, resp.pdu.varbind_list.length)
