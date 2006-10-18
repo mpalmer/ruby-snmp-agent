@@ -180,6 +180,31 @@ module SNMP
 # do the full set of processing to obtain the subset of values, so it'll be
 # quicker to process.
 # 
+# = Bulk plugin loading
+#
+# If you've got a large collection of plugins that you want to include in
+# your system, you don't have to define them all by hand within your code --
+# you can use the +add_plugin_dir+ method to load all of the plugins present
+# in a directory.
+#
+# There are two sorts of plugin files recognised by the loader:
+#
+#  - Any files whose names look like OIDs.  In this case, the filename is
+#    used as the base OID for the plugin, and the contents of the file are
+#    taken as the complete code to run for the plugin.  This method is
+#    really only suitable for fairly simple plugins, and is mildly
+#    deprecated -- practical experience has shown that this method of
+#    defining a plugin is actually fairly confusing.
+#
+#  - Any file in the plugin directory which ends in +.rb+ is evaluated as
+#    ruby code, in the context of the SNMP::Agent object which is running
+#    +add_plugin_dir+.  This means that any methods or classes defined in
+#    the file are in the scope of the SNMP::Agent object itself.  To
+#    actually add a plugin in this instance, you need to run
+#    +self.add_plugin+ explicitly. This method of defining plugins
+#    externally is preferred, since although it is more verbose, it is much
+#    more flexible and lends itself to better modularity of plugins.
+#
 
 class Agent
 	DefaultSettings = { :port => 161,
