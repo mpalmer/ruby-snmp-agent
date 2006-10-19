@@ -500,11 +500,8 @@ class MibNode
 		output
 	end
 	
-	def get_node(oid, opts = {})
+	def get_node(oid)
 		oid = ObjectId.new(oid)
-		def_opts = {:allow_plugins => true,
-		            :make_new_nodes => false}
-		opts = def_opts.merge(opts)
 
 		next_idx = oid.shift
 		if next_idx.nil?
@@ -512,17 +509,10 @@ class MibNode
 			return self
 		end
 
-		# Are we creating new trees as we go?
-		if opts[:make_new_nodes].true?
-			if subnodes[next_idx].nil?
-				subnodes[next_idx] = MibNode.new(:logger => @log)
-			end
-		end
-		
-		next_node = sub_node(next_idx, opts)
+		next_node = sub_node(next_idx)
 		if next_node.is_a? MibNode
 			# Walk the line
-			return next_node.get_node(oid, opts)
+			return next_node.get_node(oid)
 		elsif oid.length == 0
 			# Got to the end of the OID at just the right time
 			return next_node
@@ -578,22 +568,16 @@ class MibNode
 	end
 
 	private
-	def sub_node(idx, opts = {})
+	def sub_node(idx)
 		raise ArgumentError.new("Index [#{idx}] must be an integer in a MIB tree") unless idx.is_a? ::Integer
-		def_opts = {:allow_plugins => true}
-		opts = def_opts.merge(opts)
 		
 		# Dereference into the subtree. Let's see what we've got here, shall we?
 		next_node = @subnodes[idx]
 		
 		if next_node.is_a? MibNodePlugin
-			if opts[:allow_plugins].false?
-				raise SNMP::TraversesPluginError.new("Cannot traverse plugin")
-			else
-				next_node = next_node.plugin_value
-				if next_node.is_a? Array or next_node.is_a? Hash
-					next_node = MibNode.new(next_node.to_hash.merge(:logger => @log))
-				end
+			next_node = next_node.plugin_value
+			if next_node.is_a? Array or next_node.is_a? Hash
+				next_node = MibNode.new(next_node.to_hash.merge(:logger => @log))
 			end
 		end
 
