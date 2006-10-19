@@ -256,19 +256,7 @@ class Agent
 	# See the class documentation for full information on how to use this method.
 	#
 	def add_plugin(base_oid, &block)
-		base_oid = ObjectId.new(base_oid) unless base_oid.is_a? ObjectId
-
-		our_node = base_oid[-1]
-		begin
-			parent = @mib_tree.get_node(base_oid[0..-2], :allow_plugins => false, :make_new_nodes => true)
-		rescue SNMP::TraversesPluginError
-			raise ArgumentError.new("Adding plugin #{base_oid} would encroach on the subtree of an existing plugin")
-		end
-		if parent[our_node].nil?
-			parent[our_node] = MibNodePlugin.new(:logger => @log, &block)
-		else
-			raise ArgumentError.new("OID #{base_oid} is already occupied by something; cannot put a plugin here")
-		end
+		@mib_tree.add_node(base_oid, MibNodePlugin.new(&block))
 	end
 
 	# Add a directory full of plugins to the agent.
@@ -455,14 +443,12 @@ class Agent
 			# tree.  If there's no 'next' node at this level, then we shouldn't update
 			# the next_oid because at the moment the 'next' OID is in a whole separate
 			# subtree.  Diagrams would be useful at this point, but my ASCII art sucks.
-			if oid_idx == 0
-				path_to_here = []
-			else
-				path_to_here = oid[0, oid_idx]
-			end
+			path_to_here = oid[0, oid_idx]
+
 			next_oid = ObjectId.new(path_to_here + [maybe_next]) unless maybe_next.nil?
 			@log.debug "I currently think the next OID is at or somewhere below #{next_oid.to_s}"
-			current_node = current_node[oid[oid_idx]]
+			# Step through to the next level of node
+			current_node = @mib_tree.get_node(oid[0, oid_idx + 1])
 		end
 
 		# Special case: if our next_oid is empty, then we've ended up off the end of the
@@ -483,19 +469,37 @@ class Agent
 	end
 end
 
-class MibNode < Hash
+class MibNode
 	def initialize(initial_data = {})
 		@log = initial_data.keys.include?(:logger) ? initial_data.delete(:logger) : Logger.new('/dev/null')
+		@subnodes = {}
 
 		initial_data.keys.each do |k|
 			raise ArgumentError.new("MIB key #{k} is not an integer") unless k.is_a? ::Integer
-			self[k] = initial_data[k]
-			if self[k].is_a? Array or self[k].is_a? Hash
-				self[k] = MibNode.new(self[k].to_hash.merge(:logger => @log))
+			@subnodes[k] = initial_data[k]
+			if @subnodes[k].is_a? Array or @subnodes[k].is_a? Hash
+				@subnodes[k] = MibNode.new(@subnodes[k].to_hash.merge(:logger => @log))
 			end
 		end
 	end
 
+	def keys
+		subnodes.keys
+	end
+	
+	def length
+		subnodes.length
+	end
+
+	def to_hash
+		output = {}
+		self.keys.each do |k|
+			output[k] = subnodes[k].respond_to?(:to_hash) ? subnodes[k].to_hash : subnodes[k]
+		end
+		
+		output
+	end
+	
 	def get_node(oid, opts = {})
 		oid = ObjectId.new(oid)
 		def_opts = {:allow_plugins => true,
@@ -510,8 +514,8 @@ class MibNode < Hash
 
 		# Are we creating new trees as we go?
 		if opts[:make_new_nodes].true?
-			if self[next_idx].nil?
-				self[next_idx] = MibNode.new(:logger => @log)
+			if subnodes[next_idx].nil?
+				subnodes[next_idx] = MibNode.new(:logger => @log)
 			end
 		end
 		
@@ -528,6 +532,29 @@ class MibNode < Hash
 		end
 	end
 	
+	def add_node(oid, node)
+		oid = ObjectId.new(oid) unless oid.is_a? ObjectId
+
+		if oid.length == 1
+			if subnodes[oid[0]].nil?
+				subnodes[oid[0]] = node
+			else
+				raise ArgumentError.new("OID #{oid} is already occupied by something; cannot put a plugin here")
+			end
+		else
+			sub = oid.shift
+			if subnodes[sub].nil?
+				subnodes[sub] = SNMP::MibNode.new
+			end
+			
+			if subnodes[sub].is_a? SNMP::MibNodePlugin
+				raise ArgumentError.new("Adding plugin #{oid} would encroach on the subtree of an existing plugin")
+			else
+				subnodes[sub].add_node(oid, node)
+			end
+		end
+	end
+
 	# Return the path down the 'left' side of the MIB tree from this point.
 	# The 'left' is, of course, the smallest node in each subtree until we
 	# get to a leaf.
@@ -557,7 +584,7 @@ class MibNode < Hash
 		opts = def_opts.merge(opts)
 		
 		# Dereference into the subtree. Let's see what we've got here, shall we?
-		next_node = self[idx]
+		next_node = @subnodes[idx]
 		
 		if next_node.is_a? MibNodePlugin
 			if opts[:allow_plugins].false?
@@ -571,6 +598,10 @@ class MibNode < Hash
 		end
 
 		return next_node
+	end
+
+	def subnodes
+		@subnodes
 	end
 end
 
