@@ -256,6 +256,7 @@ class Agent
 	# See the class documentation for full information on how to use this method.
 	#
 	def add_plugin(base_oid, &block)
+ 		raise ArgumentError.new("Must pass a block to add_plugin") unless block_given?
 		@mib_tree.add_node(base_oid, MibNodePlugin.new(&block))
 	end
 
@@ -290,6 +291,10 @@ class Agent
 		end
 			
 		$VERBOSE = orig_verbose
+	end
+
+	def add_proxy(base_oid, host, port)
+		@mib_tree.add_node(base_oid, SNMP::MibNodeProxy.new(base_oid, host, port))
 	end
 
 	# Main connection handling loop.
@@ -382,7 +387,7 @@ class Agent
 	
 	def get_snmp_value(oid)
 		@log.debug("get_snmp_value(#{oid.to_s})")
-		data_value = @mib_tree.get_node(oid)
+		data_value = get_mib_entry(oid)
 		
 		if data_value.is_a? ::Integer
 			SNMP::Integer.new(data_value)
@@ -614,6 +619,28 @@ class MibNodePlugin
 		end
 		
 		@cached_value
+	end
+end
+
+class MibNodeProxy < MibNode
+	def initialize(base_oid, host, port)
+		@base_oid = SNMP::ObjectId.new(base_oid)
+		@manager = SNMP::Manager.new(:Host => host, :Port => port)
+	end
+	
+	def get_node(oid)
+		oid = SNMP::ObjectId.new(oid) unless oid.is_a? SNMP::ObjectId
+		
+		complete_oid = ObjectId.new(@base_oid + oid)
+		
+		rv = @manager.get([complete_oid])
+		
+		rv.varbind_list[0].value
+	end
+
+	private
+	def sub_node(x)
+		raise RuntimeError.new("This method should never be called")
 	end
 end
 			
