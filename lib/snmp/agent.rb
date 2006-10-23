@@ -283,7 +283,7 @@ class Agent
 	#
 	def add_plugin(base_oid, &block)
  		raise ArgumentError.new("Must pass a block to add_plugin") unless block_given?
-		@mib_tree.add_node(base_oid, MibNodePlugin.new(&block))
+		@mib_tree.add_node(base_oid, MibNodePlugin.new(:logger => @log, &block))
 	end
 
 	# Add a directory full of plugins to the agent.
@@ -438,66 +438,15 @@ class Agent
 		@log.debug "Looking for the next OID from #{oid.to_s}"
 		oid = ObjectId.new(oid) unless oid.is_a? ObjectId
 		
-		next_oid = []
+		next_oid = @mib_tree.next_oid_in_tree(oid)
 		
-		current_node = get_mib_entry(oid)
-		
-		@log.debug "Current node is a(n) #{current_node.class}"
-		if current_node.is_a? MibNode
-			@log.debug "There is a subtree from #{oid.to_s}"
-			# There is a subtree below the requested location, so we just need
-			# to walk down the far "left" (lowest numbered entry) of the tree
-			# until we hit the end, and that's our next.
-			return ObjectId.new(oid + current_node.left_path)
+		if next_oid.nil?
+			next_oid = SNMP::EndOfMibView
 		end
 		
-		# Bugger.  The OID given to the GetNext is either a leaf node or
-		# doesn't exist at all.  This means that we need to tromp through the
-		# given OID, slowly and carefully, making sure to only add to the
-		# next_oid when the current node has a larger neighbour.  Then once
-		# we've worked out what the start of the "next" is, we walk it's left
-		# side to find the endpoint.  Blergh.
-		current_node = @mib_tree
-		@log.debug "Walking the entire tree"
-		oid.length.times do |oid_idx|
-			@log.debug "Level #{oid_idx} in the tree"
-			@log.debug "Node in our OID is #{oid[oid_idx]}"
-			current_node = current_node.plugin_value if current_node.is_a? MibNodePlugin
-			
-			# Are we at a dead-end in the tree?
-			break if current_node.nil?
-			maybe_next = current_node.keys.sort.find {|v| v > oid[oid_idx]}
-			@log.debug "Next element in the tree at this level is #{maybe_next}"
-			
-			# The 'next' OID is constructed of the path through the tree that got
-			# us to this node, plus the node 'next' to this one at this level of the
-			# tree.  If there's no 'next' node at this level, then we shouldn't update
-			# the next_oid because at the moment the 'next' OID is in a whole separate
-			# subtree.  Diagrams would be useful at this point, but my ASCII art sucks.
-			path_to_here = oid[0, oid_idx]
-
-			next_oid = ObjectId.new(path_to_here + [maybe_next]) unless maybe_next.nil?
-			@log.debug "I currently think the next OID is at or somewhere below #{next_oid.to_s}"
-			# Step through to the next level of node
-			current_node = @mib_tree.get_node(oid[0, oid_idx + 1])
-		end
-
-		# Special case: if our next_oid is empty, then we've ended up off the end of the
-		# MIB and it's time to send back an error
-		if next_oid.length == 0
-			@log.debug "Returning EndOfMibView"
-			return SNMP::EndOfMibView
-		end
-
-		# So, we start from where we left off above, and then walk through that subtree
-		# to find the *real* first entry
-		current_node = get_mib_entry(next_oid)
-		if current_node.is_a? MibNode
-			return ObjectId.new(next_oid + current_node.left_path)
-		else
-			return ObjectId.new(next_oid)
-		end
+		next_oid
 	end
+		
 end
 
 class MibNode
@@ -565,7 +514,7 @@ class MibNode
 		else
 			sub = oid.shift
 			if subnodes[sub].nil?
-				subnodes[sub] = SNMP::MibNode.new
+				subnodes[sub] = SNMP::MibNode.new(:logger => @log)
 			end
 			
 			if subnodes[sub].is_a? SNMP::MibNodePlugin
@@ -596,6 +545,45 @@ class MibNode
 		path.unshift(next_idx)
 
 		return path
+	end
+
+	def next_oid_in_tree(oid)
+		@log.debug("MibNode#next_oid_in_tree(#{oid})")
+		oid = ObjectId.new(oid)
+
+		# End of the line, bub
+		return self.left_path if oid.length == 0
+
+		sub = oid.shift
+
+		next_oid = if subnodes[sub].respond_to? :next_oid_in_tree
+			@log.debug("subnode #{sub} (of class #{subnodes[sub].class}) talks next_oid_in_tree")
+			subnodes[sub].next_oid_in_tree(oid)
+		end
+		
+		@log.debug("Got #{next_oid} from call to subnodes[#{sub}].next_oid_in_tree(#{oid})")
+		
+		if next_oid.nil?
+			@log.debug("No luck asking subtree #{sub}; how about the next subtree?")
+			sub = subnodes.keys.sort.find { |k| k > sub }
+			next_oid = if subnodes[sub].respond_to? :left_path
+				@log.debug("Looking at the left path of subtree #{sub}")
+				subnodes[sub].left_path
+			end
+		end
+		
+		if next_oid.nil? and sub
+			@log.debug("We've got no next subtree, just a lonely little node")
+			next_oid = []
+		end
+		
+		if next_oid.nil?
+			@log.debug("This node has no valid next nodes")
+			return nil
+		else
+			@log.debug("The next OID for #{oid} is #{next_oid.to_s}")
+			return ObjectId.new(next_oid.unshift(sub))
+		end
 	end
 
 	private
@@ -645,6 +633,18 @@ class MibNodePlugin
 		end
 		
 		@cached_value
+	end
+	
+	def next_oid_in_tree(oid)
+		data = self.plugin_value
+		if data.is_a? Array
+			data = data.to_hash
+		end
+		if data.is_a? Hash
+			data = MibNode.new(data.merge({:logger => @log}))
+		end
+		
+		data.next_oid_in_tree(oid)
 	end
 end
 
