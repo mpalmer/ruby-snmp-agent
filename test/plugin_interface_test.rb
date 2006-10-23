@@ -73,6 +73,15 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		# Not OK, since it would attach itself somewhere inside an
 		# existing plugin's "namespace"
 		assert_raise(ArgumentError) { @a.add_plugin('1.2.3.4') { "help me!" } }
+		
+		# Now try to add a proxy instead
+		assert_raise(ArgumentError) { @a.add_proxy('1', 'localhost', 16161) }
+		assert_raise(ArgumentError) { @a.add_proxy('1.2.3.4', 'localhost', 16161) }
+		
+		# And what about if we try to add plugins over an existing proxy?
+		assert_nothing_raised { @a.add_proxy('1.3.5', 'localhost', 16161) }
+		
+		assert_raise(ArgumentError) { @a.add_plugin('1.3.5.7') { 'feh' } }
 	end
 
 	def test_a_tree_of_data

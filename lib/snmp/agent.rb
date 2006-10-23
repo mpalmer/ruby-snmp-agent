@@ -205,6 +205,32 @@ module SNMP
 #    externally is preferred, since although it is more verbose, it is much
 #    more flexible and lends itself to better modularity of plugins.
 #
+# = Proxying to other SNMP agents
+#
+# Although the Ruby SNMP agent is quite versatile, it currently lacks a lot
+# of the standard MIB trees that we know and love.  This means, of course,
+# that if you want to walk standard trees, like load averages, disk
+# partitions, and network statistics, you'll need to be running another SNMP
+# agent on your machines in addition to this agent.  Rather than doing the
+# dirty and making you remember whatever non-standard port you may have put
+# one (or both) of the agents on, you can instead proxy the other agent
+# through the Ruby SNMP agent.
+#
+# The syntax for this is very simple:
+#
+#   agent.add_proxy(oid, host, port)
+#
+# This simple call will cause any request to any part of the MIB subtree
+# rooted at <oid> to be fulfilled by making an SNMP request to the agent
+# running on <host> and listening on <port> and returning whatever that
+# agent sends back to us.
+#
+# A (minor) limitation at the moment is that you can't proxy a subtree
+# provided by the backend agent to a different subtree in the Ruby SNMP
+# agent.  I don't consider this to be a major limitation, as -- due to the
+# globally-unique and globally-meaningful semantics of the MIB -- you
+# shouldn't have too much call for changing OIDs in proxies.
+#
 
 class Agent
 	DefaultSettings = { :port => 161,
@@ -636,6 +662,11 @@ class MibNodeProxy < MibNode
 		rv = @manager.get([complete_oid])
 		
 		rv.varbind_list[0].value
+	end
+	
+	# Cannot add a node inside a proxy
+	def add_node(oid, node)
+		raise ArgumentError.new("Cannot add a node inside a MibNodeProxy")
 	end
 
 	private
