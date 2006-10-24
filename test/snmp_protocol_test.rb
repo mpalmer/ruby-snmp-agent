@@ -87,4 +87,52 @@ class SnmpProtocolTest < Test::Unit::TestCase
 		assert_equal(1, resp.pdu.varbind_list.length)
 		assert_equal(SNMP::NoSuchObject, resp.pdu.varbind_list[0].value)
 	end
+
+	def test_single_community_restriction
+		port = 50000 + rand(10000)
+		@a = SNMP::Agent.new(:port => port, :community => 'privateparts')
+		@a.add_plugin('1.2.3') { [1, 2, 3] }
+		
+		runner = Thread.new { @a.start }
+		
+		m = SNMP::Manager.new(:Host => 'localhost',
+		                      :Port => port,
+		                      :Community => 'privateparts',
+		                      :Retries => 1)
+		assert_nothing_raised { m.get(['1.2.3.1']) }
+
+		m = SNMP::Manager.new(:Host => 'localhost',
+		                      :Port => port,
+		                      :Community => 'somethingfunny',
+		                      :Retries => 1,
+		                      :Timeout => 0.1)
+
+		assert_raise(SNMP::RequestTimeout) { m.get(['1.2.3.1']) }
+		
+		@a.shutdown
+	end
+
+	def test_array_of_communities
+		port = 50000 + rand(10000)
+		@a = SNMP::Agent.new(:port => port, :community => ['private', 'parts'])
+		@a.add_plugin('1.2.3') { [1, 2, 3] }
+		
+		runner = Thread.new { @a.start }
+		
+		m = SNMP::Manager.new(:Host => 'localhost',
+		                      :Port => port,
+		                      :Community => 'private',
+		                      :Retries => 1)
+		assert_nothing_raised { m.get(['1.2.3.1']) }
+
+		m = SNMP::Manager.new(:Host => 'localhost',
+		                      :Port => port,
+		                      :Community => 'somethingfunny',
+		                      :Retries => 1,
+		                      :Timeout => 0.1)
+
+		assert_raise(SNMP::RequestTimeout) { m.get(['1.2.3.1']) }
+		
+		@a.shutdown
+	end
 end

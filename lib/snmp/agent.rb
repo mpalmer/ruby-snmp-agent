@@ -238,7 +238,8 @@ class Agent
 	                    :logger => Logger.new('/dev/null'),
 	                    :sysContact => "Someone",
 	                    :sysName => "Ruby SNMP agent",
-	                    :sysLocation => "Unknown"
+	                    :sysLocation => "Unknown",
+	                    :community => nil
 	                  }
 
 	# Create a new agent.
@@ -257,6 +258,11 @@ class Agent
 	#             sysName.  Default: "Ruby SNMP agent"
 	#   :sysLocation -- A string to provide when an SNMP request is made for
 	#             sysLocation.  Default: "Unknown"
+	#   :community -- Either a string or array of strings which specify the
+	#             community/communities which this SNMP agent will respond
+	#             to.  The default is nil, which means that the agent will
+	#             respond to any SNMP PDU, regardless of the community name
+	#             encoded in the PDU.
 	#
 	def initialize(settings = {})
 		settings = DefaultSettings.merge(settings)
@@ -264,6 +270,7 @@ class Agent
 		@port = settings[:port]
 		@log = settings[:logger]
 		@max_packet = settings[:max_packet]
+		@community = settings[:community]
 		
 		@mib_tree = MibNode.new(:logger => @log)
 		
@@ -346,7 +353,30 @@ class Agent
 				@log.debug "Received #{data.length} bytes"
 				@log.debug data.inspect
 				@log.debug "Responding to #{remote_info[3]}:#{remote_info[1]}"
+				
 				message = Message.decode(data)
+				
+				# Community access checks
+				unless @community.nil?
+					@log.debug "Checking community"
+					community_ok = if @community.class == String
+						@log.debug "Checking if #{message.community} is #{@community}"
+						@community == message.community
+					elsif @community.class == Array
+						@log.debug "Checking if #{message.community} is in #{@community.inspect}"
+						@community.include? message.community
+					else
+						@log.error "Invalid setting for :community"
+						false
+					end
+					if community_ok
+						@log.debug "Community OK"
+					else
+						@log.debug "Community invalid"
+						next
+					end
+				end
+				
 				case message.pdu
 					when GetRequest
 						@log.debug "GetRequest received"
