@@ -271,6 +271,7 @@ class Agent
 		@log = settings[:logger]
 		@max_packet = settings[:max_packet]
 		@community = settings[:community]
+		@socket = nil
 		
 		@mib_tree = MibNode.new(:logger => @log)
 		
@@ -343,8 +344,7 @@ class Agent
 	# thread or catch one or more signals so that you can actually call
 	# +shutdown+ to stop the agent.
 	def start
-		@socket = UDPSocket.open
-		@socket.bind('', @port)
+		open_socket if @socket.nil?
 
 		@log.info "SNMP agent running"
 		loop do
@@ -395,6 +395,8 @@ class Agent
 			rescue IOError => e
 				break if e.message == 'stream closed' or e.message == 'closed stream'
 				@log.warn "IO Error: #{e.message}"
+			rescue Errno::EBADF
+				break
 			rescue => e
 				@log.error "Error in handling message: #{e.message}"
 			end
@@ -411,6 +413,13 @@ class Agent
 	def shutdown
 		@log.info "SNMP agent stopping"
 		@socket.close
+	end
+
+	# Open the socket.  Call this if you want to drop elevated privileges before
+	# starting the agent itself.
+	def open_socket
+		@socket = UDPSocket.open
+		@socket.bind('', @port)
 	end
 
 	private

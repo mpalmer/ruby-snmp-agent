@@ -1,6 +1,3 @@
-* Add a real-world agent binary for those who just want a simple,
-  stand-alone SNMP agent to replace net-snmpd.
-
 * Provide a multi-threaded mode for the listener.
 
 * Support symbolic OID specification in add_plugin -- that is, allow you to

@@ -1,0 +1,162 @@
+#!/usr/bin/ruby1.8
+#
+# Portions Copyright (c) 2006 Mooter Media Ltd
+# All rights reserved.
+#
+# Portions Copyright (c) 2006 Matthew Palmer <mpalmer@hezmatt.org>
+# All rights reserved.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation (version 2 of the License)
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston MA  02110-1301 USA
+#
+
+RUBY_SNMPD_VERSION = "0.1"
+
+require 'optparse'
+
+require 'snmp/agent'
+
+class RubySnmpd
+	VERSION = "0.1"
+	
+	def main(*argv)
+		@options = {
+			:printhelp => false,
+			:printversion => false,
+			:logfile => '/var/log/rubysnmpd.log',
+			:pidfile => '/var/run/rubysnmpd.pid',
+			:background => true,
+			:port => 161,
+			:user => 'rubysnmpd',
+			:plugindirs => ['/usr/lib/ruby/1.8/snmp/plugins'],
+			:background => true,
+			:debug => false
+		}
+
+		cmdopts.parse(*argv)
+	
+		if @options[:printhelp]
+			puts "Ruby snmpd, version #{RUBY_SNMPD_VERSION}\n\n"
+			puts cmdopts
+			exit 0
+		end
+	
+		if @options[:printversion]
+			puts "Ruby snmpd, version #{RUBY_SNMPD_VERSION}\n\n"
+			exit 0
+		end
+	
+		@log = Logger.new(@options[:logfile])
+		@log.level = @options[:debug] ? Logger::DEBUG : Logger::INFO
+
+		a = SNMP::Agent.new(:port => @options[:port],
+		                    :logger => @log)
+
+		begin
+			boot(a)
+		rescue SystemExit
+			exit
+		rescue Exception => e
+			@log.error("Unhandled exception: #{e.class}: #{e.message}")
+			@log.error("Backtrace follows:")
+			e.backtrace.each { |l| @log.error l }
+		end
+	end
+
+	def cmdopts
+		opts = OptionParser.new
+	
+		opts.on('-h', '--help',
+		        "Print usage information") { @options[:printhelp] = true }
+		opts.on('-V', '--version',
+		        "Print version information and exit") { @options[:printversion] = true }
+		opts.on('-p', '--port PORT',
+		        "Specify the port for the agent to listen on",
+		        "(default: #{@options[:port]})",
+		        Integer) { |v| @options[:port] = v }
+		opts.on('-L', '--logfile LOGFILE',
+				  "Specify the logfile to use",
+		        "(default: #{@options[:logfile]})",
+		        String) { |v| @options[:logfile] = v }
+		opts.on('-P', '--pidfile PIDFILE',
+		        "File to write the agent's process ID to",
+			     "(default: #{@options[:pidfile]})",
+		        String) { |v| @options[:pidfile] = v }
+		opts.on('-I', '--include dir,dir', '--plugindirs dir,dir',
+		        "Specify the director(y,ies} to load plugins",
+		        "from",
+		        "(default: #{@options[:plugindirs].join(',')})",
+		        Array) { |v| @options[:plugindirs] = v }
+		opts.on('-u', '--user USERNAME',
+		        "The user to run the agent as",
+		        "(default: #{@options[:user]})",
+		        String) { |v| @options[:user] = v }
+		opts.on('-F', '--foreground',
+		        "Leave the agent running in the foreground") { @options[:background] = false }
+		opts.on('-d', '--debug',
+		        "Debugging mode.  Stay in the foreground,",
+		        "log to stderr instead of the specified",
+		        "logfile, and print lots of debugging",
+		        "information.") do
+		        	@options[:background] = false
+		        	@options[:debug] = true
+		        	@options[:logfile] = $stderr
+				  end
+
+		opts
+	end
+
+	def boot(agent)
+		background if @options[:background]
+
+		File.open(@options[:pidfile], 'w') {|fd| fd.puts $$}
+
+		trap("SIGINT") { agent.shutdown; File.unlink(@options[:pidfile]) }
+		trap("SIGTERM") { agent.shutdown; File.unlink(@options[:pidfile]) }
+
+		agent.open_socket
+		drop_privs(@options[:user]) if Process.euid == 0
+		@options[:plugindirs].each { |dir| agent.add_plugin_dir(dir) if File.directory? dir }
+		agent.start
+	end
+
+	def drop_privs(user)
+		euid = nil
+		File.open("/etc/passwd") do |fd|
+			fd.each_line do |l|
+				if l =~ /^#{user}:[^:]*:(\d+)/
+					euid = $1.to_i
+				end
+			end
+		end
+
+		if euid.nil?
+			@log.error("Failed to find UID for #{user}; exiting")
+			exit 2
+		end
+
+		File.chown(euid, 0, @options[:pidfile])
+		
+		Process::UID.change_privilege(euid)
+	end
+	
+	def background
+		if fork.nil?
+			$stdout.close
+			$stderr.close
+			$stdin.close
+		else
+			exit 0
+		end
+	end
+end
+
+RubySnmpd.new.main(*ARGV)
