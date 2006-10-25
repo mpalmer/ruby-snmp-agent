@@ -1,6 +1,8 @@
 * Add a real-world agent binary for those who just want a simple,
   stand-alone SNMP agent to replace net-snmpd.
 
+* Provide a multi-threaded mode for the listener.
+
 * Support symbolic OID specification in add_plugin -- that is, allow you to
   specify a MIB name rather than a giant opaque collection of numbers.  This
   involves detecting that the OID given isn't already an ObjectId, having an
