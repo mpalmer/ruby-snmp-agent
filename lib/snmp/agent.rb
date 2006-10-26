@@ -26,10 +26,10 @@ require 'snmp'
 require 'socket'
 require 'logger'
 
-module SNMP
+module SNMP  # :nodoc:
 
 ##
-# == SNMP Agent skeleton.
+# = SNMP Agent skeleton
 #
 # Objects of this class are capable of acting as SNMP agents -- that is,
 # receiving SNMP PDUs and (possibly) returning data as a result of those
@@ -44,7 +44,7 @@ module SNMP
 # What values get returned is determined by "plugins", small chunks of code
 # that return values that the agent can then send back to the requestor.
 #
-# = Simple example agent
+# == A simple example agent
 #
 #    require 'snmp/agent'
 #
@@ -63,7 +63,7 @@ module SNMP
 # structured data when it's called.  The pre-defined plugin for basic system
 # parameters is a good (if basic) example of how you structure your data.
 #
-# = Writing plugins
+# == Writing plugins
 #
 # I've tried to make writing plugins as painless as possible, but
 # unfortunately there's still a fair amount of hassle that's required in
@@ -72,9 +72,9 @@ module SNMP
 #
 # The basic layout of all plugins is the same -- you map a base OID to a
 # chunk of code, and then any requests for that subtree cause the code to be
-# executed.  You use +SNMP::Agent#add_plugin+ method to add a new plugin.
-# This method takes a base OID (as a string or an array of integers) and a
-# block of code to be run when the requested OID matches the given base OID.
+# executed.  You use SNMP::Agent#add_plugin to add a new plugin. This method
+# takes a base OID (as a string or an array of integers) and a block of code
+# to be run when the requested OID matches the given base OID.
 #
 # The result from the block of code should either be a single value (if you
 # want the base OID to return a value itself), a simple array or hash (if
@@ -91,6 +91,45 @@ module SNMP
 # will find the plugin, run it, and return a PDU containing 'INTEGER: 42'.
 # Any request for an OID below .1.2.3 will be answered with NoSuchObject.
 #
+# If you want to return a list of dwarves, you could do this:
+#
+#    agent.add_plugin('1.2.4') { %w{sleepy grumpy doc crazy hungry} }
+#
+# In this case, requesting the OID '1.2.4' won't get you anything, but
+# requesting '1.2.4.0' will get you the OCTET STRING 'sleepy', and
+# requesting '1.2.4.3' will return 'crazy'.  You could also walk the whole
+# of the '1.2.4' subtree and you'll get each of the dwarves in turn.
+#
+# "Sparse" data can be handled in much the same way, but with a hash instead
+# of an array.  So a list of square roots, indexed by the squared value,
+# might look like this:
+#
+#    agent.add_plugin('1.2.5') { {1 => 1, 4 => 2, 9 => 3, 16 => 4, 25 => 5} }
+#
+# Now, if you get '1.2.5.9', you'll get the INTEGER 3, but if you get either
+# of '1.2.5.8' or '1.2.5.10' you'll get noSuchObject.
+#
+# More complicated tree structures are possible, too -- such as a
+# two-dimensional "multiplication table", like so:
+#
+#    agent.add_plugin('1.2.6') { [[0, 0, 0, 0, 0, 0],
+#                                 [0, 1, 2, 3, 4, 5],
+#                                 [0, 2, 4, 6, 8, 10],
+#                                 [0, 3, 6, 9, 12, 15],
+#                                 [0, 4, 8, 12, 16, 20],
+#                                 [0, 5, 10, 15, 20, 25]
+#                                ]
+#                              }
+#
+# Now you can get the product of any two numbers between 0 and 5 by simply
+# doing a get on your agent for '1.2.6.n.m' -- or you could use a
+# calculator. The real value of plugins isn't static data like this, it's
+# dynamic creation of data -- reading things from files, parsing kernel
+# data, that sort of thing.  Doing that is left as an exercise for the
+# reader...
+#
+# === Restrictions for plugin OIDs
+#
 # On the topic of plugins and subtrees: you cannot have a plugin respond
 # to a subtree of another plugin.  That is, if you have one plugin which
 # has registered itself as handling '1.2.3', you cannot have another plugin
@@ -98,7 +137,9 @@ module SNMP
 # will conflict.  Whether this behaviour is fixed in the future depends on
 # whether it turns out to be a limitation that causes major hassle.
 #
-# There is a limted amount of type interpolation in the plugin running code.
+# === Plugins and data types
+#
+# There is a limted amount of type interpolation in the plugin handler.
 # At present, integer values will be kept as integers, and most everything
 # else will be converted to an OCTET STRING.  If you have a particular need
 # to return values of particular SNMP types, the agent will pass-through any
@@ -107,41 +148,7 @@ module SNMP
 #
 #    agent.add_plugin('1.2.3') { SNMP::Gauge32.new(42) }
 #
-# Getting more complex, if you wanted OID .1.2.3 to return a list of values,
-# you can return an array:
-#
-#    agent.add_plugin('1.2.3') { %{the quick brown fox jumped over the lazy dog} }
-#
-# That will get you OIDs .1.2.3.0 through .1.2.3.8 containing a word each from
-# the ever-famous typing test.
-#
-# To produce deeper trees of data within a single plugin, you can have
-# arrays within arrays, like this:
-#
-#    agent.add_plugin('1.2.3') { [[0, 1, 2], [10, 11, 12], [20, 21, 22]])
-#
-# This will return the following values for the following OIDs:
-#
-#    .1.2.3.0.0 => 0
-#    .1.2.3.0.1 => 1
-#    .1.2.3.0.2 => 2
-#    .1.2.3.1.0 => 10
-#    .1.2.3.1.1 => 11
-#    .1.2.3.1.2 => 12
-#    .1.2.3.2.0 => 20
-#    .1.2.3.2.1 => 21
-#    .1.2.3.2.2 => 22
-#
-# The agent walks through the array, using elements of the OID to dereference
-# each level of the array, before finally arriving at a value.  If the OID
-# runs out before getting to a scalar value, or the arrays run out while there's
-# will elements of the OID, then NoSuchObject is returned.
-#
-# You can produce "sparse" lists of values (such as required by the hrRun table)
-# by using a hash and giving the values for each OID as values to integer keys.
-# If you try to use non-integer keys in your hash things will explode, however.
-#
-# = Caching plugin data
+# === Caching plugin data
 #
 # Often, running a plugin to collect data is quite expensive -- if you're
 # calling out to a web service or doing a lot of complex calculations, and
@@ -152,14 +159,14 @@ module SNMP
 #
 # To prevent this problem, the SNMP agent provides a fairly simple caching
 # mechanism within itself.  If you return the data from your plugin as a
-# hash, you can add an extra element to that hash, with a key of +:cache+,
-# which should have a value of how many seconds you want the agent to retain
-# your data for before re-running the plugin.  So, a simple cached data tree
-# might look like:
+# hash, you can add an extra element to that hash, with a key of
+# <tt>:cache</tt>, which should have a value of how many seconds you want
+# the agent to retain your data for before re-running the plugin.  So, a
+# simple cached data tree might look like:
 #
 #   {:cache => 30, 0 => [0, 1, 2], 1 => ['a', 'b', 'c']}
 #
-# So the agent will cache the given data (+{0 => [...], 1 => [...]}+) for
+# So the agent will cache the given data (<tt>{0 => [...], 1 => [...]}</tt>) for
 # 30 seconds before running the plugin again to get a new set of data.
 #
 # How long should you cache data for?  That's up to you.  The tradeoffs are
@@ -180,32 +187,32 @@ module SNMP
 # do the full set of processing to obtain the subset of values, so it'll be
 # quicker to process.
 # 
-# = Bulk plugin loading
+# === Bulk plugin loading
 #
 # If you've got a large collection of plugins that you want to include in
 # your system, you don't have to define them all by hand within your code --
-# you can use the +add_plugin_dir+ method to load all of the plugins present
+# you can use the <tt>add_plugin_dir</tt> method to load all of the plugins present
 # in a directory.
 #
 # There are two sorts of plugin files recognised by the loader:
 #
-#  - Any files whose names look like OIDs.  In this case, the filename is
-#    used as the base OID for the plugin, and the contents of the file are
-#    taken as the complete code to run for the plugin.  This method is
-#    really only suitable for fairly simple plugins, and is mildly
-#    deprecated -- practical experience has shown that this method of
-#    defining a plugin is actually fairly confusing.
+# - Any files whose names look like OIDs.  In this case, the filename is
+#   used as the base OID for the plugin, and the contents of the file are
+#   taken as the complete code to run for the plugin.  This method is
+#   really only suitable for fairly simple plugins, and is mildly
+#   deprecated -- practical experience has shown that this method of
+#   defining a plugin is actually fairly confusing.
 #
-#  - Any file in the plugin directory which ends in +.rb+ is evaluated as
-#    ruby code, in the context of the SNMP::Agent object which is running
-#    +add_plugin_dir+.  This means that any methods or classes defined in
-#    the file are in the scope of the SNMP::Agent object itself.  To
-#    actually add a plugin in this instance, you need to run
-#    +self.add_plugin+ explicitly. This method of defining plugins
-#    externally is preferred, since although it is more verbose, it is much
-#    more flexible and lends itself to better modularity of plugins.
+# - Any file in the plugin directory which ends in <tt>.rb</tt> is evaluated
+#   as ruby code, in the context of the SNMP::Agent object which is running
+#   <tt>add_plugin_dir</tt>.  This means that any methods or classes defined in
+#   the file are in the scope of the SNMP::Agent object itself.  To
+#   actually add a plugin in this instance, you need to run
+#   <tt>self.add_plugin</tt> explicitly. This method of defining plugins
+#   externally is preferred, since although it is more verbose, it is much
+#   more flexible and lends itself to better modularity of plugins.
 #
-# = Proxying to other SNMP agents
+# == Proxying to other SNMP agents
 #
 # Although the Ruby SNMP agent is quite versatile, it currently lacks a lot
 # of the standard MIB trees that we know and love.  This means, of course,
@@ -232,7 +239,7 @@ module SNMP
 # shouldn't have too much call for changing OIDs in proxies.
 #
 
-class Agent
+class Agent  # :doc:
 	DefaultSettings = { :port => 161,
 	                    :max_packet => 8000,
 	                    :logger => Logger.new('/dev/null'),
@@ -248,21 +255,21 @@ class Agent
 	# symbols and values.  Currently valid settings (and their defaults)
 	# are as follows:
 	#
-	#   :port -- The UDP port to listen on.  Default: 161
-	#   :max_packet -- The largest UDP packet that will be read.  Default: 8000
-	#   :logger -- A Logger object to write all messages to.  Default: sends all
-	#             messages to /dev/null.
-	#   :sysContact -- A string to provide when an SNMP request is made for
-	#             sysContact.  Default: "Someone"
-	#   :sysName -- A string to provide when an SNMP request is made for
-	#             sysName.  Default: "Ruby SNMP agent"
-	#   :sysLocation -- A string to provide when an SNMP request is made for
-	#             sysLocation.  Default: "Unknown"
-	#   :community -- Either a string or array of strings which specify the
-	#             community/communities which this SNMP agent will respond
-	#             to.  The default is nil, which means that the agent will
-	#             respond to any SNMP PDU, regardless of the community name
-	#             encoded in the PDU.
+	# [:port]        The UDP port to listen on.  Default: 161
+	# [:max_packet]  The largest UDP packet that will be read.  Default: 8000
+	# [:logger]      A Logger object to write all messages to.  Default: sends all
+	#                messages to /dev/null.
+	# [:sysContact]  A string to provide when an SNMP request is made for
+	#                sysContact.  Default: "Someone"
+	# [:sysName]     A string to provide when an SNMP request is made for
+	#                sysName.  Default: "Ruby SNMP agent"
+	# [:sysLocation] A string to provide when an SNMP request is made for
+	#                sysLocation.  Default: "Unknown"
+	# [:community]   Either a string or array of strings which specify the
+	#                community/communities which this SNMP agent will respond
+	#                to.  The default is nil, which means that the agent will
+	#                respond to any SNMP PDU, regardless of the community name
+	#                encoded in the PDU.
 	#
 	def initialize(settings = {})
 		settings = DefaultSettings.merge(settings)
@@ -492,7 +499,7 @@ class Agent
 		
 end
 
-class MibNode
+class MibNode  # :nodoc:
 	def initialize(initial_data = {})
 		@log = initial_data.keys.include?(:logger) ? initial_data.delete(:logger) : Logger.new('/dev/null')
 		@subnodes = {}
@@ -651,7 +658,7 @@ class MibNode
 	end
 end
 
-class MibNodePlugin
+class MibNodePlugin  # :nodoc:
 	def initialize(opts = {}, &block)
 		@log = opts[:logger].nil? ? Logger.new('/dev/null') : opts[:logger]
 		@proc = block
@@ -691,7 +698,7 @@ class MibNodePlugin
 	end
 end
 
-class MibNodeProxy < MibNode
+class MibNodeProxy < MibNode  # :nodoc:
 	def initialize(opts)
 		@base_oid = SNMP::ObjectId.new(opts[:base_oid])
 		@manager = SNMP::Manager.new(:Host => opts[:host], :Port => opts[:port])
@@ -748,7 +755,7 @@ end
 
 end
 
-class Array
+class Array  # :nodoc:
 	def keys
 		k = []
 		self.length.times { |v| k << v }
@@ -762,12 +769,12 @@ class Array
 	end
 end
 
-class FalseClass
+class FalseClass  # :nodoc:
 	def false?; true; end
 	def true?; false; end
 end
 
-class TrueClass
+class TrueClass  # :nodoc:
 	def false?; false; end
 	def true?; true; end
 end
