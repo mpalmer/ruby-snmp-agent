@@ -298,7 +298,7 @@ class Agent  # :doc:
 	#
 	def add_plugin(base_oid, &block)
  		raise ArgumentError.new("Must pass a block to add_plugin") unless block_given?
-		@mib_tree.add_node(base_oid, MibNodePlugin.new(:logger => @log, &block))
+		@mib_tree.add_node(base_oid, MibNodePlugin.new(:logger => @log, :oid => base_oid, &block))
 	end
 
 	# Add a directory full of plugins to the agent.
@@ -662,6 +662,7 @@ class MibNodePlugin  # :nodoc:
 	def initialize(opts = {}, &block)
 		@log = opts[:logger].nil? ? Logger.new('/dev/null') : opts[:logger]
 		@proc = block
+		@oid = opts[:oid]
 		@cached_value = nil
 		@cache_until = 0
 	end
@@ -671,7 +672,7 @@ class MibNodePlugin  # :nodoc:
 			begin
 				@cached_value = @proc.call
 			rescue => e
-				@log.warn("Plugin threw an exception: #{e.message}\n#{e.backtrace}")
+				@log.warn("Plugin for OID #{@oid} threw an exception: #{e.message}\n#{e.backtrace.join("\n")}")
 				@cached_value = nil
 			end
 			if @cached_value.is_a? Hash
