@@ -405,7 +405,7 @@ class Agent  # :doc:
 			rescue Errno::EBADF
 				break
 			rescue => e
-				@log.error "Error in handling message: #{e.message}"
+				@log.error "Error in handling message: #{e.message}: #{e.backtrace.join("\n")}"
 			end
 		end
 	end
