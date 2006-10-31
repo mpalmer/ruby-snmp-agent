@@ -103,15 +103,16 @@ class RubySnmpd  # :nodoc:
 		}
 
 		cmdopts.parse(*argv)
-	
-		if @options[:printhelp]
+
+		if @options[:printhelp] or @options[:printversion]
 			puts "Ruby snmpd, version #{RUBY_SNMPD_VERSION}\n\n"
+		end
+		
+		if @options[:printhelp]
 			puts cmdopts
-			exit 0
 		end
 	
-		if @options[:printversion]
-			puts "Ruby snmpd, version #{RUBY_SNMPD_VERSION}\n\n"
+		if @options[:printhelp] or @options[:printversion]
 			exit 0
 		end
 	
