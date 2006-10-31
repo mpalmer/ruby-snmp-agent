@@ -672,7 +672,7 @@ class MibNodePlugin  # :nodoc:
 			begin
 				@cached_value = @proc.call
 			rescue => e
-				@log.warn("Plugin for OID #{@oid} threw an exception: #{e.message}\n#{e.backtrace.join("\n")}")
+				@log.warn("Plugin for OID #{@oid} raised an exception: #{e.message}\n#{e.backtrace.join("\n")}")
 				@cached_value = nil
 			end
 			if @cached_value.is_a? Hash
