@@ -97,7 +97,7 @@ class RubySnmpd  # :nodoc:
 			:background => true,
 			:port => 161,
 			:user => 'rubysnmpd',
-			:plugindirs => ['/usr/lib/ruby/1.8/snmp/plugins'],
+			:plugindirs => ['/usr/lib/ruby/1.8/snmp/agent_plugins'],
 			:background => true,
 			:debug => false
 		}
@@ -177,13 +177,16 @@ class RubySnmpd  # :nodoc:
 	end
 
 	def boot(agent)
-		background if @options[:background]
+		if @options[:background]
+			background
+			File.open(@options[:pidfile], 'w') {|fd| fd.puts $$}
 
-		File.open(@options[:pidfile], 'w') {|fd| fd.puts $$}
-
-		trap("SIGINT") { agent.shutdown; File.unlink(@options[:pidfile]) }
-		trap("SIGTERM") { agent.shutdown; File.unlink(@options[:pidfile]) }
-
+			trap("SIGINT") { agent.shutdown; File.unlink(@options[:pidfile]) }
+			trap("SIGTERM") { agent.shutdown; File.unlink(@options[:pidfile]) }
+		else
+			trap("SIGINT") { agent.shutdown }
+		end
+		
 		agent.open_socket
 		drop_privs(@options[:user]) if Process.euid == 0
 		@options[:plugindirs].each { |dir| agent.add_plugin_dir(dir) if File.directory? dir }
