@@ -727,7 +727,7 @@ class MibNodePlugin  # :nodoc:
 			data = MibNode.new(data.merge({:logger => @log}))
 		end
 		
-		data.next_oid_in_tree(oid)
+		data.next_oid_in_tree(oid) unless data.nil?
 	end
 end
 
