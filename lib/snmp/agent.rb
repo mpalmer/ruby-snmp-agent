@@ -506,9 +506,10 @@ class MibNode  # :nodoc:
 
 		initial_data.keys.each do |k|
 			raise ArgumentError.new("MIB key #{k} is not an integer") unless k.is_a? ::Integer
-			@subnodes[k] = initial_data[k]
-			if @subnodes[k].is_a? Array or @subnodes[k].is_a? Hash
-				@subnodes[k] = MibNode.new(@subnodes[k].to_hash.merge(:logger => @log))
+			if initial_data[k].is_a? Array or initial_data[k].is_a? Hash
+				@subnodes[k] = MibNode.new(initial_data[k].to_hash.merge(:logger => @log)) unless initial_data[k].length == 0
+			else
+				@subnodes[k] = initial_data[k]
 			end
 		end
 	end
@@ -577,26 +578,48 @@ class MibNode  # :nodoc:
 
 	# Return the path down the 'left' side of the MIB tree from this point.
 	# The 'left' is, of course, the smallest node in each subtree until we
-	# get to a leaf.
+	# get to a leaf.  It is possible that the subtree doesn't contain any
+	# actual data; in this instance, left_path will return nil to indicate
+	# "no tree here, look somewhere else".
 	def left_path()
-		next_idx = self.keys.sort[0]
-
-		# Dereference into the subtree. Let's see what we've got here, shall we?
-		next_node = sub_node(next_idx)
+		@log.debug("left_path")
+		path = nil
 		
-		if next_node.is_a? MibNode
-			# Walk the line
-			path = next_node.left_path()
-		else
-			path = []
+		self.keys.sort.each do |next_idx|
+			@log.debug("Boink (#{next_idx})")
+			# Dereference into the subtree. Let's see what we've got here, shall we?
+			next_node = sub_node(next_idx)
+		
+			if next_node.is_a? MibNode
+				@log.debug("is_a MibNode")
+				if next_node.length == 0
+					# Woop!  Woop!  Empty node alert!
+					@log.debug("Nobody home")
+					next
+				else
+					# Walk the line
+					@log.debug("Down the rabbit hole")
+					path = next_node.left_path()
+					# No left path down *that* subtree, we should have a look
+					# at the next subtree
+					next if path.nil?
+				end
+			else
+				# Not a MibNode, so we've presumably found *something* useful
+				@log.debug("Starting the path")
+				path = []
+			end
+	
+			# Add ourselves to the front of the path, and we're done
+			path.unshift(next_idx)
+			return path
 		end
-
-		# Add ourselves to the front of the path
-		path.unshift(next_idx)
-
+		
 		return path
 	end
 
+	# Return the next OID strictly larger than the given OID from this node.
+	# Returns nil if there is no OID that matches the criteria.
 	def next_oid_in_tree(oid)
 		@log.debug("MibNode#next_oid_in_tree(#{oid})")
 		oid = ObjectId.new(oid)
@@ -611,29 +634,37 @@ class MibNode  # :nodoc:
 			subnodes[sub].next_oid_in_tree(oid)
 		end
 		
-		@log.debug("Got #{next_oid} from call to subnodes[#{sub}].next_oid_in_tree(#{oid})")
+		@log.debug("Got #{next_oid} (#{next_oid.class}) from call to subnodes[#{sub}].next_oid_in_tree(#{oid})")
 		
 		if next_oid.nil?
 			@log.debug("No luck asking subtree #{sub}; how about the next subtree?")
 			sub = subnodes.keys.sort.find { |k| k > sub }
+			if sub.nil?
+				@log.debug("This node has no valid next nodes")
+				return nil
+			end
+				
 			next_oid = if subnodes[sub].respond_to? :left_path
 				@log.debug("Looking at the left path of subtree #{sub}")
 				subnodes[sub].left_path
 			end
 		end
 		
-		if next_oid.nil? and sub
-			@log.debug("We've got no next subtree, just a lonely little node")
-			next_oid = []
+		if next_oid.nil?
+			if oid.length == 0
+				@log.debug("We're just a lonely little leaf node")
+				next_oid = []
+			else
+				# We're in the middle of the tree, and all our children are
+				# empty, therefore we are empty too
+				@log.debug("Node with all-empty children")
+				return nil
+			end
 		end
 		
-		if next_oid.nil?
-			@log.debug("This node has no valid next nodes")
-			return nil
-		else
-			@log.debug("The next OID for #{oid} is #{next_oid.to_s}")
-			return ObjectId.new(next_oid.unshift(sub))
-		end
+		next_oid.unshift(sub)
+		@log.debug("The next OID for #{oid} is #{next_oid.to_s}")
+		return ObjectId.new(next_oid)
 	end
 
 	private
@@ -645,9 +676,6 @@ class MibNode  # :nodoc:
 		
 		if next_node.is_a? MibNodePlugin
 			next_node = next_node.plugin_value
-			if next_node.is_a? Array or next_node.is_a? Hash
-				next_node = MibNode.new(next_node.to_hash.merge(:logger => @log))
-			end
 		end
 
 		return next_node
@@ -675,11 +703,15 @@ class MibNodePlugin  # :nodoc:
 				@log.warn("Plugin for OID #{@oid} raised an exception: #{e.message}\n#{e.backtrace.join("\n")}")
 				@cached_value = nil
 			end
+			if @cached_value.is_a? Array
+				@cached_value = @cached_value.to_hash
+			end
 			if @cached_value.is_a? Hash
 				unless @cached_value[:cache].nil?
 					@cache_until = Time.now.to_i + @cached_value[:cache]
 					@cached_value.delete :cache
 				end
+				@cached_value = MibNode.new(@cached_value.merge(:logger => @log))
 			end
 		end
 		

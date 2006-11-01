@@ -120,6 +120,9 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		# Simple case -- delve into the tree in the same plugin
 		assert_equal('1.2.3.0', @a.next_oid_in_tree('1.2.3').to_s)
 		
+		# Simple edge case -- last element within the same plugin
+		assert_equal('1.2.3.2', @a.next_oid_in_tree('1.2.3.1').to_s)
+
 		# Slightly harder -- find the first real value in the next tree
 		assert_equal('1.2.3.0', @a.next_oid_in_tree('1.2').to_s)
 		
@@ -132,7 +135,6 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		# Or even *at* the end of the tree
 		assert_equal(SNMP::EndOfMibView, @a.next_oid_in_tree('4.5.6.2'))
 
-		assert_equal('1.2.3.2', @a.next_oid_in_tree('1.2.3.1').to_s)
 	end
 
 	def test_dir_of_plugins
@@ -181,9 +183,12 @@ class PluginInterfaceTest < Test::Unit::TestCase
 	def test_empty_plugin_return
 		@a.add_plugin('1.2.3.4') { {} }
 		@a.add_plugin('4.3.2.1') { [] }
+		@a.add_plugin('2.3.4') { {0 => [1, 2, 3], 1 => [] } }
 		
 		assert_equal(SNMP::NoSuchObject, @a.get_snmp_value('1.2.3.4'))
 		assert_equal(SNMP::NoSuchObject, @a.get_snmp_value('4.3.2.1'))
+		assert_equal(SNMP::NoSuchObject, @a.get_snmp_value('2.3.4.1'))
+		assert_equal(SNMP::EndOfMibView, @a.next_oid_in_tree('2.3.4.0.2'))
 	end
 
 	def test_exception_throwing_plugin
