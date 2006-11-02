@@ -40,16 +40,16 @@ class ProxyTest < Test::Unit::TestCase
 		class << mgr; attr_reader :transport; end
 		assert_equal ICBINASnmpAgent, mgr.transport.class
 
-		# Did the transport object get initialised correctly?
-		assert_equal 'localhost', mgr.transport.host
-		assert_equal 16161, mgr.transport.port
-
 		# Add a plugin to the 'remote' agent
 		mgr.transport.agent.add_plugin('1.3.6.1.4.1.2021') { [[0, 1, 2], [10, 11, 12], [20, 21, 22]] }
 		
 		# Retrieve some data from the 'remote' through the proxy
 		assert_equal 11, p.get_node('1.1')
 		
+		# Did the transport object get called correctly?
+		assert_equal 'localhost', mgr.transport.host
+		assert_equal 16161, mgr.transport.port
+
 		# Examine the SNMP request that was sent
 		req = SNMP::Message.decode(mgr.transport.last_packet)
 		assert_equal SNMP::GetRequest, req.pdu.class
@@ -60,7 +60,10 @@ class ProxyTest < Test::Unit::TestCase
 
 	def test_get_through_proxy_infected_agent
 		a = SNMP::Agent.new
-		
+		class << a
+			public :process_get_request
+		end
+
 		with_fake_remote do
 			a.add_proxy('1.3.6.1.4.1.2021', 'localhost', 16161)
 		end
@@ -71,8 +74,6 @@ class ProxyTest < Test::Unit::TestCase
 		assert_equal '1.3.6.1.4.1.2021', proxy_node.instance_eval("@base_oid").to_s
 		transport = proxy_node.instance_eval('@manager').instance_eval('@transport')
 		assert_equal ICBINASnmpAgent, transport.class
-		assert_equal 'localhost', transport.host
-		assert_equal 16161, transport.port
 		
 		# Add some data for the 'remote' agent to send to our proxy
 		transport.agent.add_plugin('1.3.6.1.4.1.2021') { [[0, 1, 2], [10, 11, 12], [20, 21, 22]] }
@@ -95,6 +96,10 @@ class ProxyTest < Test::Unit::TestCase
 		# Now, what about when we proxy?
 		msg = SNMP::Message.new(1, 'public', SNMP::GetRequest.new(1, SNMP::VarBindList.new('1.3.6.1.4.1.2021.1.1')))
 		resp = a.process_get_request(msg)
+
+		# Did we proxy to the right place?
+		assert_equal 'localhost', transport.host
+		assert_equal 16161, transport.port
 
 		# Examine the request that was made to the 'remote' agent
 		req = SNMP::Message.decode(transport.last_packet)
@@ -123,16 +128,16 @@ class ProxyTest < Test::Unit::TestCase
 		class << mgr; attr_reader :transport; end
 		assert_equal ICBINASnmpAgent, mgr.transport.class
 
-		# Did the transport object get initialised correctly?
-		assert_equal 'localhost', mgr.transport.host
-		assert_equal 16161, mgr.transport.port
-
 		# Add a plugin to the 'remote' agent
 		mgr.transport.agent.add_plugin('1.3.6.1.4.1.2021') { [[0, 1, 2], [10, 11, 12], [20, 21, 22]] }
 		
 		# Retrieve some data from the 'remote' through the proxy
 		assert_equal '1.2', p.next_oid_in_tree('1.1').to_s
 		
+		# Did the transport object get called correctly?
+		assert_equal 'localhost', mgr.transport.host
+		assert_equal 16161, mgr.transport.port
+
 		# Examine the SNMP request that was sent
 		req = SNMP::Message.decode(mgr.transport.last_packet)
 		assert_equal SNMP::GetNextRequest, req.pdu.class
@@ -143,6 +148,9 @@ class ProxyTest < Test::Unit::TestCase
 	
 	def test_get_next_through_proxy_infected_agent
 		a = SNMP::Agent.new
+		class << a
+			public :process_get_next_request
+		end
 		
 		with_fake_remote do
 			a.add_proxy('1.3.6.1.4.1.2021', 'localhost', 16161)
@@ -154,8 +162,6 @@ class ProxyTest < Test::Unit::TestCase
 		assert_equal '1.3.6.1.4.1.2021', proxy_node.instance_eval("@base_oid").to_s
 		transport = proxy_node.instance_eval('@manager').instance_eval('@transport')
 		assert_equal ICBINASnmpAgent, transport.class
-		assert_equal 'localhost', transport.host
-		assert_equal 16161, transport.port
 		
 		# Add some data for the 'remote' agent to send to our proxy
 		transport.agent.add_plugin('1.3.6.1.4.1.2021') { [[0, 1, 2], [10, 11, 12], [20, 21, 22]] }
@@ -166,6 +172,10 @@ class ProxyTest < Test::Unit::TestCase
 		# Now, what about when we proxy?
 		msg = SNMP::Message.new(1, 'public', SNMP::GetNextRequest.new(1, SNMP::VarBindList.new('1.3.6.1.4.1.2021.1.1')))
 		resp = a.process_get_next_request(msg)
+
+		# Correct callee?
+		assert_equal 'localhost', transport.host
+		assert_equal 16161, transport.port
 
 		# Now how about that response, huh?
 		assert_equal(SNMP::Message, resp.class)
@@ -196,22 +206,17 @@ class ICBINASnmpAgent
 	
 	# Create the mock agent.  It'll only respond to packets sent to the
 	# host/port combo specified here.
-	def initialize(host, port)
-		@host = host
-		@port = port
-		
+	def initialize
 		@agent = SNMP::Agent.new
 		class << @agent
 			public :process_get_request, :process_get_next_request
 		end
 	end
 
-	def send(data, flags = 0)
-		if host == @host and port == @port
-			@last_packet = data
-		else
-			@last_packet = nil
-		end
+	def send(data, host, port)
+		@host = host
+		@port = port
+		@last_packet = data
 	end
 	
 	def recv(maxlen, flags = nil)
