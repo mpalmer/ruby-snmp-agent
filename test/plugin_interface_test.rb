@@ -215,4 +215,12 @@ class PluginInterfaceTest < Test::Unit::TestCase
 	
 		assert_equal('1.2.3.2', @a.next_oid_in_tree('1.2.3.1.0').to_s)
 	end
+
+	def test_return_other_snmp_types
+		@a.add_plugin('1.2.3') { [ SNMP::IpAddress.new('127.0.0.1') ] }
+		
+		v = @a.get_snmp_value('1.2.3.0')
+		assert_equal(SNMP::IpAddress, v.class)
+		assert_equal('127.0.0.1', v.to_s)
+	end
 end

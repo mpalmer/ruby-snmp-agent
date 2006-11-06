@@ -471,7 +471,7 @@ class Agent  # :doc:
 			SNMP::OctetString.new(data_value)
 		elsif data_value.nil? or data_value.is_a? MibNode
 			SNMP::NoSuchObject
-		elsif data_value.is_a? SNMP::Integer
+		elsif data_value.respond_to? :asn1_type
 			data_value
 		else
 			SNMP::OctetString.new(data_value.to_s)
