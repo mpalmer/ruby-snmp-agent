@@ -634,7 +634,7 @@ class MibNode  # :nodoc:
 			subnodes[sub].next_oid_in_tree(oid)
 		end
 		
-		@log.debug("Got #{next_oid} (#{next_oid.class}) from call to subnodes[#{sub}].next_oid_in_tree(#{oid})")
+		@log.debug("Got #{next_oid.inspect} (#{next_oid.class}) from call to subnodes[#{sub}].next_oid_in_tree(#{oid.to_s})")
 		
 		if next_oid.nil?
 			@log.debug("No luck asking subtree #{sub}; how about the next subtree?")
@@ -643,6 +643,7 @@ class MibNode  # :nodoc:
 				@log.debug("This node has no valid next nodes")
 				return nil
 			end
+			@log.debug("Next subtree is #{sub}")
 				
 			next_oid = if subnodes[sub].respond_to? :left_path
 				@log.debug("Looking at the left path of subtree #{sub}")
@@ -663,7 +664,7 @@ class MibNode  # :nodoc:
 		end
 		
 		next_oid.unshift(sub)
-		@log.debug("The next OID for #{oid} is #{next_oid.to_s}")
+		@log.debug("The next OID for #{oid.inspect} is #{next_oid.inspect}")
 		return ObjectId.new(next_oid)
 	end
 
@@ -728,6 +729,10 @@ class MibNodePlugin  # :nodoc:
 		end
 		
 		data.next_oid_in_tree(oid) if data.respond_to? :next_oid_in_tree
+	end
+	
+	def left_path
+		self.plugin_value.left_path if self.plugin_value.respond_to? :left_path
 	end
 end
 

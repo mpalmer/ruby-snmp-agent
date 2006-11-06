@@ -199,4 +199,13 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		assert_equal(SNMP::NoSuchObject, @a.get_snmp_value('1.2.3.4'))
 		assert_equal(SNMP::EndOfMibView, @a.next_oid_in_tree('3.2.1.0'))
 	end
+
+	def test_next_oid_from_multiple_array_plugins
+		@a.add_plugin('1.2.3.1') { [ 1 ] }
+		@a.add_plugin('1.2.3.2') { [ 2 ] }
+		@a.add_plugin('1.2.3.3') { [ 3 ] }
+		
+		assert_equal(2, @a.get_snmp_value('1.2.3.2.0'))
+		assert_equal('1.2.3.3.0', @a.next_oid_in_tree('1.2.3.2.0').to_s)
+	end
 end
