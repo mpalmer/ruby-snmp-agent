@@ -135,4 +135,18 @@ class SnmpProtocolTest < Test::Unit::TestCase
 		
 		@a.shutdown
 	end
+
+	def test_get_next_request_against_single_value_plugin
+		@a.add_plugin('3.2.1') { 42 }
+		
+		pdu = SNMP::GetNextRequest.new(1, SNMP::VarBindList.new(['3.2']))
+		msg = SNMP::Message.new(1, 'public', pdu)
+		
+		resp = @a.process_get_next_request(msg)
+		
+		assert_equal(SNMP::Message, resp.class)
+		assert_equal(1, resp.pdu.varbind_list.length)
+		assert_equal('3.2.1', resp.pdu.varbind_list[0].name.to_s)
+		assert_equal(42, resp.pdu.varbind_list[0].value.to_i)
+	end
 end
