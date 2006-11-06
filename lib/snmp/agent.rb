@@ -732,7 +732,13 @@ class MibNodePlugin  # :nodoc:
 	end
 	
 	def left_path
-		self.plugin_value.left_path if self.plugin_value.respond_to? :left_path
+		if self.plugin_value.respond_to? :left_path
+			self.plugin_value.left_path
+		elsif !self.plugin_value.nil?
+			[]
+		else
+			nil
+		end
 	end
 end
 

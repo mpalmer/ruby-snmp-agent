@@ -208,4 +208,11 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		assert_equal(2, @a.get_snmp_value('1.2.3.2.0'))
 		assert_equal('1.2.3.3.0', @a.next_oid_in_tree('1.2.3.2.0').to_s)
 	end
+	
+	def test_next_oid_into_single_value_plugins
+		@a.add_plugin('1.2.3.1') { [ 1 ] }
+		@a.add_plugin('1.2.3.2') { 2 }
+	
+		assert_equal('1.2.3.2', @a.next_oid_in_tree('1.2.3.1.0').to_s)
+	end
 end
