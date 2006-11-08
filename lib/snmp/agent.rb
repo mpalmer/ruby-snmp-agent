@@ -280,7 +280,7 @@ class Agent  # :doc:
 		@community = settings[:community]
 		@socket = nil
 		
-		@mib_tree = MibNode.new(:logger => @log)
+		@mib_tree = MibNodeTree.new(:logger => @log)
 		
 		agent_start_time = Time.now
 		self.add_plugin('1.3.6.1.2.1.1') { {1 => [`uname -a`],
@@ -327,6 +327,8 @@ class Agent  # :doc:
 					self.instance_eval(File.read(File.join(dir, f)))
 				rescue SyntaxError => e
 					@log.warn "Syntax error in #{File.join(dir, f)}: #{e.message}"
+				rescue Exception => e
+					@log.warn "Some error occured while loading #{File.join(dir, f)}: #{e.message}"
 				end
 			end
 		end
@@ -422,8 +424,8 @@ class Agent  # :doc:
 		@socket.close
 	end
 
-	# Open the socket.  Call this if you want to drop elevated privileges before
-	# starting the agent itself.
+	# Open the socket.  Call this early if you want to drop elevated
+	# privileges before starting the agent itself.
 	def open_socket
 		@socket = UDPSocket.open
 		@socket.bind('', @port)
@@ -463,15 +465,16 @@ class Agent  # :doc:
 	
 	def get_snmp_value(oid)
 		@log.debug("get_snmp_value(#{oid.to_s})")
-		data_value = get_mib_entry(oid)
+		data_value = get_mib_entry(oid).value
 		
 		if data_value.is_a? ::Integer
 			SNMP::Integer.new(data_value)
 		elsif data_value.is_a? String
 			SNMP::OctetString.new(data_value)
-		elsif data_value.nil? or data_value.is_a? MibNode
+		elsif data_value.nil?
 			SNMP::NoSuchObject
 		elsif data_value.respond_to? :asn1_type
+			# Assuming that we got given back a literal SNMP type
 			data_value
 		else
 			SNMP::OctetString.new(data_value.to_s)
@@ -480,7 +483,7 @@ class Agent  # :doc:
 	
 	def get_mib_entry(oid)
 		@log.debug "Looking for MIB entry #{oid.to_s}"
-		oid = ObjectId.new(oid)
+		oid = ObjectId.new(oid) unless oid.is_a? ObjectId
 		@mib_tree.get_node(oid)
 	end
 
@@ -500,79 +503,98 @@ class Agent  # :doc:
 end
 
 class MibNode  # :nodoc:
+	# Create a new MibNode (of some type)
+	#
+	# This is quite a tricky piece of work -- we have to work out whether
+	# we're being asked to create a MibNodeTree (initial_data is a hash or
+	# array), a MibNodeValue (initial_data is some sort of scalar), a
+	# MibNodeProxy (initial_data consists of :host and :port), or a
+	# MibNodePlugin (a block was given).
+	#
+	# What comes out the other end is something that will respond to the
+	# standard MibNode interface, whatever it may be underneath.
+	#
+	def self.create(initial_data = {}, opts = {}, &block)
+		if initial_data.respond_to? :next_oid_in_tree
+			return initial_data
+		end
+
+		if initial_data.is_a? Array
+			initial_data = initial_data.to_hash
+		end
+
+		if initial_data.is_a? Hash
+			initial_data.merge! opts
+			if block_given?
+				return MibNodePlugin.new(initial_data, &block)
+			elsif initial_data.keys.member? :host and initial_data.keys.member? :port
+				return MibNodeProxy.new(initial_data)
+			else
+				return MibNodeTree.new(initial_data.merge(opts))
+			end
+		else
+			return MibNodeValue.new({:value => initial_data}.merge(opts))
+		end
+	end
+end
+
+class MibNodeTree < MibNode  # :nodoc:
 	def initialize(initial_data = {})
 		@log = initial_data.keys.include?(:logger) ? initial_data.delete(:logger) : Logger.new('/dev/null')
-		@subnodes = {}
+		@subnodes = Hash.new { |h,k| h[k] = SNMP::MibNodeTree.new(:logger => @log) }
 
 		initial_data.keys.each do |k|
 			raise ArgumentError.new("MIB key #{k} is not an integer") unless k.is_a? ::Integer
-			if initial_data[k].is_a? Array or initial_data[k].is_a? Hash
-				@subnodes[k] = MibNode.new(initial_data[k].to_hash.merge(:logger => @log)) unless initial_data[k].length == 0
-			else
-				@subnodes[k] = initial_data[k]
-			end
+			@subnodes[k] = MibNode.create(initial_data[k], :logger => @log)
 		end
-	end
-
-	def keys
-		subnodes.keys
-	end
-	
-	def length
-		subnodes.length
 	end
 
 	def to_hash
 		output = {}
-		self.keys.each do |k|
-			output[k] = subnodes[k].respond_to?(:to_hash) ? subnodes[k].to_hash : subnodes[k]
+		keys.each do |k|
+			output[k] = @subnodes[k].respond_to?(:to_hash) ? @subnodes[k].to_hash : @subnodes[k]
 		end
 		
 		output
 	end
+
+	def empty?
+		length == 0
+	end
+
+	def value
+		nil
+	end
 	
 	def get_node(oid)
 		oid = ObjectId.new(oid)
+		@log.debug("get_node(#{oid.to_s})")
 
 		next_idx = oid.shift
 		if next_idx.nil?
 			# End of the road, bud
 			return self
-		end
-
-		next_node = sub_node(next_idx)
-		if next_node.is_a? MibNode
-			# Walk the line
-			return next_node.get_node(oid)
-		elsif oid.length == 0
-			# Got to the end of the OID at just the right time
-			return next_node
 		else
-			# We're out of tree but not out of path... so it must be nil!
-			return nil
+			return sub_node(next_idx).get_node(oid)
 		end
 	end
 	
 	def add_node(oid, node)
 		oid = ObjectId.new(oid) unless oid.is_a? ObjectId
+		@log.debug("Adding a #{node.class} at #{oid.to_s}")
 
-		if oid.length == 1
-			if subnodes[oid[0]].nil?
-				subnodes[oid[0]] = node
+		sub = oid.shift
+
+		if oid.length == 0
+			if @subnodes.has_key? sub
+				raise ArgumentError.new("OID #{oid} is already occupied by something; cannot put a node here")
 			else
-				raise ArgumentError.new("OID #{oid} is already occupied by something; cannot put a plugin here")
+				@log.debug("Inserted")
+				@subnodes[sub] = node
+				@log.debug("#{self.object_id}.subnodes[#{sub}] is now a #{@subnodes[sub].class}")
 			end
 		else
-			sub = oid.shift
-			if subnodes[sub].nil?
-				subnodes[sub] = SNMP::MibNode.new(:logger => @log)
-			end
-			
-			if subnodes[sub].is_a? SNMP::MibNodePlugin
-				raise ArgumentError.new("Adding plugin #{oid} would encroach on the subtree of an existing plugin")
-			else
-				subnodes[sub].add_node(oid, node)
-			end
+			@subnodes[sub].add_node(oid, node)
 		end
 	end
 
@@ -585,43 +607,28 @@ class MibNode  # :nodoc:
 		@log.debug("left_path")
 		path = nil
 		
-		self.keys.sort.each do |next_idx|
+		keys.sort.each do |next_idx|
 			@log.debug("Boink (#{next_idx})")
 			# Dereference into the subtree. Let's see what we've got here, shall we?
 			next_node = sub_node(next_idx)
 		
-			if next_node.is_a? MibNode
-				@log.debug("is_a MibNode")
-				if next_node.length == 0
-					# Woop!  Woop!  Empty node alert!
-					@log.debug("Nobody home")
-					next
-				else
-					# Walk the line
-					@log.debug("Down the rabbit hole")
-					path = next_node.left_path()
-					# No left path down *that* subtree, we should have a look
-					# at the next subtree
-					next if path.nil?
-				end
-			else
-				# Not a MibNode, so we've presumably found *something* useful
-				@log.debug("Starting the path")
-				path = []
+			path = next_node.left_path()
+			unless path.nil?
+				# Add ourselves to the front of the path, and we're done
+				path.unshift(next_idx)
+				return path
 			end
-	
-			# Add ourselves to the front of the path, and we're done
-			path.unshift(next_idx)
-			return path
 		end
 		
-		return path
+		# We chewed through all the keys and all the subtrees were completely
+		# empty.  Bugger.
+		return nil
 	end
 
 	# Return the next OID strictly larger than the given OID from this node.
-	# Returns nil if there is no OID that matches the criteria.
+	# Returns nil if there is no larger OID in the subtree.
 	def next_oid_in_tree(oid)
-		@log.debug("MibNode#next_oid_in_tree(#{oid})")
+		@log.debug("MibNodeTree#next_oid_in_tree(#{oid})")
 		oid = ObjectId.new(oid)
 
 		# End of the line, bub
@@ -629,65 +636,55 @@ class MibNode  # :nodoc:
 
 		sub = oid.shift
 
-		next_oid = if subnodes[sub].respond_to? :next_oid_in_tree
-			@log.debug("subnode #{sub} (of class #{subnodes[sub].class}) talks next_oid_in_tree")
-			subnodes[sub].next_oid_in_tree(oid)
-		end
+		next_oid = sub_node(sub).next_oid_in_tree(oid)
 		
-		@log.debug("Got #{next_oid.inspect} (#{next_oid.class}) from call to subnodes[#{sub}].next_oid_in_tree(#{oid.to_s})")
+		@log.debug("Got #{next_oid.inspect} from call to subnodes[#{sub}].next_oid_in_tree(#{oid.to_s})")
 		
 		if next_oid.nil?
 			@log.debug("No luck asking subtree #{sub}; how about the next subtree?")
-			sub = subnodes.keys.sort.find { |k| k > sub }
+			sub = @subnodes.keys.sort.find { |k| k > sub }
 			if sub.nil?
 				@log.debug("This node has no valid next nodes")
 				return nil
 			end
 			@log.debug("Next subtree is #{sub}")
 				
-			next_oid = if subnodes[sub].respond_to? :left_path
-				@log.debug("Looking at the left path of subtree #{sub}")
-				subnodes[sub].left_path
-			end
+			next_oid = sub_node(sub).left_path
 		end
 		
 		if next_oid.nil?
-			if oid.length == 0
-				@log.debug("We're just a lonely little leaf node")
-				next_oid = []
-			else
-				# We're in the middle of the tree, and all our children are
-				# empty, therefore we are empty too
-				@log.debug("Node with all-empty children")
-				return nil
-			end
+			# We've got no next node below us
+			return nil
+		else
+			# We've got a next OID to go to; append ourselves to the front and
+			# send it back up the line
+			next_oid.unshift(sub)
+			@log.debug("The next OID for #{oid.inspect} is #{next_oid.inspect}")
+			return ObjectId.new(next_oid)
+			return nil
 		end
-		
-		next_oid.unshift(sub)
-		@log.debug("The next OID for #{oid.inspect} is #{next_oid.inspect}")
-		return ObjectId.new(next_oid)
 	end
 
 	private
 	def sub_node(idx)
+		@log.debug("sub_node(#{idx.inspect})")
 		raise ArgumentError.new("Index [#{idx}] must be an integer in a MIB tree") unless idx.is_a? ::Integer
 		
 		# Dereference into the subtree. Let's see what we've got here, shall we?
-		next_node = @subnodes[idx]
-		
-		if next_node.is_a? MibNodePlugin
-			next_node = next_node.plugin_value
-		end
-
-		return next_node
+		@log.debug("#{self.object_id}.subnodes[#{idx}] is a #{@subnodes[idx].class}")
+		@subnodes[idx]
 	end
 
-	def subnodes
-		@subnodes
+	def keys
+		@subnodes.keys
+	end
+	
+	def length
+		@subnodes.length
 	end
 end
 
-class MibNodePlugin  # :nodoc:
+class MibNodePlugin < MibNode  # :nodoc:
 	def initialize(opts = {}, &block)
 		@log = opts[:logger].nil? ? Logger.new('/dev/null') : opts[:logger]
 		@proc = block
@@ -695,50 +692,58 @@ class MibNodePlugin  # :nodoc:
 		@cached_value = nil
 		@cache_until = 0
 	end
+
+	def value
+		nil
+	end
+
+	def to_hash
+		plugin_value.to_hash
+	end
 	
+	def get_node(oid)
+		@log.debug("get_node(#{oid.to_s})")
+		plugin_value.get_node(oid) if plugin_value.respond_to? :get_node
+	end
+
+	def add_node(oid, node)
+		raise ArgumentError.new("Adding this plugin would encroach on the subtree of an existing plugin")
+	end
+
+	def left_path
+		plugin_value.left_path
+	end
+
+	def next_oid_in_tree(oid)
+		plugin_value.next_oid_in_tree(oid) if plugin_value.respond_to? :next_oid_in_tree
+	end
+	
+	private
 	def plugin_value
+		@log.debug("Getting plugin value")
 		if Time.now.to_i > @cache_until
 			begin
-				@cached_value = @proc.call
+				plugin_data = @proc.call
 			rescue => e
 				@log.warn("Plugin for OID #{@oid} raised an exception: #{e.message}\n#{e.backtrace.join("\n")}")
-				@cached_value = nil
+				return nil
 			end
-			if @cached_value.is_a? Array
-				@cached_value = @cached_value.to_hash
+
+			if plugin_data.is_a? Array
+				plugin_data = plugin_data.to_hash
 			end
-			if @cached_value.is_a? Hash
-				unless @cached_value[:cache].nil?
-					@cache_until = Time.now.to_i + @cached_value[:cache]
-					@cached_value.delete :cache
+
+			if plugin_data.is_a? Hash
+				unless plugin_data[:cache].nil?
+					@cache_until = Time.now.to_i + plugin_data[:cache]
+					plugin_data.delete :cache
 				end
-				@cached_value = MibNode.new(@cached_value.merge(:logger => @log))
 			end
+			
+			@cached_value = MibNode.create(plugin_data, :logger => @log)
 		end
 		
 		@cached_value
-	end
-	
-	def next_oid_in_tree(oid)
-		data = self.plugin_value
-		if data.is_a? Array
-			data = data.to_hash
-		end
-		if data.is_a? Hash
-			data = MibNode.new(data.merge({:logger => @log}))
-		end
-		
-		data.next_oid_in_tree(oid) if data.respond_to? :next_oid_in_tree
-	end
-	
-	def left_path
-		if self.plugin_value.respond_to? :left_path
-			self.plugin_value.left_path
-		elsif !self.plugin_value.nil?
-			[]
-		else
-			nil
-		end
 	end
 end
 
@@ -756,12 +761,15 @@ class MibNodeProxy < MibNode  # :nodoc:
 		
 		rv = @manager.get([complete_oid])
 		
-		rv.varbind_list[0].value
+		MibNodeValue.new(:value => rv.varbind_list[0].value)
 	end
 	
-	# Cannot add a node inside a proxy
 	def add_node(oid, node)
 		raise ArgumentError.new("Cannot add a node inside a MibNodeProxy")
+	end
+
+	def left_path()
+		next_oid_in_tree(@base_oid)
 	end
 
 	def next_oid_in_tree(oid)
@@ -780,16 +788,37 @@ class MibNodeProxy < MibNode  # :nodoc:
 			nil
 		end
 	end
-
-	private
-	def sub_node(x)
-		raise RuntimeError.new("This method should never be called")
-	end
 end
-			
-# Raised when we have asked MibNode#get_node to get a node but have
-# told it not to traverse plugins.
-class TraversesPluginError < StandardError
+
+class MibNodeValue < MibNode  # :nodoc:
+	include Comparable
+	
+	attr_reader :value
+	
+	def initialize(opts)
+		@value = opts[:value]
+		@log = Logger.new('/dev/null')
+	end
+
+	def <=>(other)
+		@value.nil? or other.nil? ? 0 : @value <=> other.value
+	end
+
+	def get_node(oid)
+		oid.length == 0 ? self : MibNodeTree.new
+	end
+	
+	def add_node(oid, node)
+		RuntimeError.new("You really shouldn't do that")
+	end
+	
+	def left_path()
+		value.nil? ? nil : []
+	end
+	
+	def next_oid_in_tree(oid)
+		nil
+	end
 end
 
 # To signal that the agent received a message that it didn't know how to
@@ -802,25 +831,21 @@ end
 class Array  # :nodoc:
 	def keys
 		k = []
-		self.length.times { |v| k << v }
+		length.times { |v| k << v }
 		k
 	end
 	
 	def to_hash
 		h = {}
-		self.keys.each {|k| h[k] = self[k]}
+		keys.each {|k| h[k] = self[k]}
 		h
 	end
 end
 
-class FalseClass  # :nodoc:
-	def false?; true; end
-	def true?; false; end
-end
-
-class TrueClass  # :nodoc:
-	def false?; false; end
-	def true?; true; end
+class NilClass  # :nodoc:
+	def value
+		nil
+	end
 end
 
 if $0 == __FILE__

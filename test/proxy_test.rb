@@ -18,6 +18,7 @@ class ProxyTest < Test::Unit::TestCase
 		
 		a.add_proxy('1.3.6.1.4.1.2021', 'localhost', 16161)
 		proxy_parent = a.get_mib_entry('1.3.6.1.4.1')
+		class << proxy_parent; public :length, :keys; end
 		assert_equal 1, proxy_parent.length
 		assert_equal [2021], proxy_parent.keys
 		proxy = proxy_parent.instance_eval("@subnodes[2021]")
@@ -44,7 +45,7 @@ class ProxyTest < Test::Unit::TestCase
 		mgr.transport.agent.add_plugin('1.3.6.1.4.1.2021') { [[0, 1, 2], [10, 11, 12], [20, 21, 22]] }
 		
 		# Retrieve some data from the 'remote' through the proxy
-		assert_equal 11, p.get_node('1.1')
+		assert_equal 11, p.get_node('1.1').value
 		
 		# Did the transport object get called correctly?
 		assert_equal 'localhost', mgr.transport.host
@@ -91,7 +92,7 @@ class ProxyTest < Test::Unit::TestCase
 		assert_equal(0, resp.pdu.varbind_list[0].value.to_i)
 		
 		# Does the proxy work directly?
-		assert_equal 11, proxy_node.get_node('1.1')
+		assert_equal 11, proxy_node.get_node('1.1').value
 
 		# Now, what about when we proxy?
 		msg = SNMP::Message.new(1, 'public', SNMP::GetRequest.new(1, SNMP::VarBindList.new('1.3.6.1.4.1.2021.1.1')))

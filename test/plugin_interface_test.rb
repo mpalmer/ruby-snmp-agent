@@ -16,12 +16,13 @@ class PluginInterfaceTest < Test::Unit::TestCase
 	def test_trivial_plugin
 		@a.add_plugin('1.2.3') { 42 }
 		
-		assert_equal(42, @a.get_mib_entry('1.2.3'))
+		assert_equal(SNMP::MibNodeValue, @a.get_mib_entry('1.2.3').class)
+		assert_equal(42, @a.get_mib_entry('1.2.3').value)
 
 		# Special check to make sure that get_mib_entry doesn't
 		# mangle the OID passed in
 		oid = SNMP::ObjectId.new('1.2.3')
-		assert_equal(42, @a.get_mib_entry(oid))
+		assert_equal(42, @a.get_mib_entry(oid).value)
 		assert_equal(SNMP::ObjectId, oid.class)
 		assert_equal('1.2.3', oid.to_s)
 	end
@@ -29,17 +30,22 @@ class PluginInterfaceTest < Test::Unit::TestCase
 	def test_almost_as_trivial_plugin
 		@a.add_plugin('1.2.3') { [42] }
 		
-		assert_equal({0=>42}, @a.get_mib_entry('1.2.3').to_hash)
+		assert_equal({0=>SNMP::MibNodeValue.new(:value => 42)}, @a.get_mib_entry('1.2.3').to_hash)
 		assert_equal(SNMP::NoSuchObject, @a.get_snmp_value('1.2.3'))
-		assert_equal(42, @a.get_mib_entry('1.2.3.0'))
+		assert_equal(42, @a.get_mib_entry('1.2.3.0').value)
 	end
 
 	def test_a_set_of_data
 		@a.add_plugin('1.2.3') { [0, 1, 2, 3, 4, 5] }
 		
-		assert_equal({0=>0,1=>1,2=>2,3=>3,4=>4,5=>5}, @a.get_mib_entry('1.2.3').to_hash)
+		assert_equal({0 => SNMP::MibNodeValue.new(:value => 0),
+		              1 => SNMP::MibNodeValue.new(:value => 1),
+		              2 => SNMP::MibNodeValue.new(:value => 2),
+		              3 => SNMP::MibNodeValue.new(:value => 3),
+		              4 => SNMP::MibNodeValue.new(:value => 4),
+		              5 => SNMP::MibNodeValue.new(:value => 5)}, @a.get_mib_entry('1.2.3').to_hash)
 		assert_equal(SNMP::NoSuchObject, @a.get_snmp_value('1.2.3'))
-		6.times { |v| assert_equal(v, @a.get_mib_entry("1.2.3.#{v}")) }
+		6.times { |v| assert_equal(SNMP::MibNodeValue.new(:value => v), @a.get_mib_entry("1.2.3.#{v}")) }
 	end
 
 	def test_multiple_plugins
@@ -47,14 +53,29 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		@a.add_plugin('1.2.3') { [0, 1, 2] }
 		@a.add_plugin('4.5.6') { [5, 6, 7] }
 
-		assert_equal({0 => nil, 1 => {0=>'the', 1=>'quick', 2=>'brown', 3=>'etc'}},
-		             @a.get_mib_entry('1.1').to_hash)
-		assert_equal(nil, @a.get_mib_entry('1.1.0'))
-		assert_equal('brown', @a.get_mib_entry('1.1.1.2'))
-		assert_equal({0=>0, 1=>1, 2=>2}, @a.get_mib_entry('1.2.3').to_hash)
-		assert_equal(0, @a.get_mib_entry('1.2.3.0'))
-		assert_equal({0=>5, 1=>6, 2=>7}, @a.get_mib_entry('4.5.6').to_hash)
-		assert_equal(6, @a.get_mib_entry('4.5.6.1'))
+		tree = @a.get_mib_entry('1.1')
+		class << tree; public :length, :keys; attr_reader :subnodes; end
+		assert_equal(2, tree.length)
+		assert_equal([0, 1], tree.keys)
+
+		tree = @a.get_mib_entry('1.1').to_hash
+		assert_equal(nil, tree[0].value)
+		assert_equal('the', tree[1][0].value)
+		assert_equal('quick', tree[1][1].value)
+		assert_equal('brown', tree[1][2].value)
+		assert_equal('etc', tree[1][3].value)
+		assert_equal(nil, @a.get_mib_entry('1.1.0').value)
+		assert_equal('brown', @a.get_mib_entry('1.1.1.2').value)
+		assert_equal({0 => SNMP::MibNodeValue.new(:value => 0),
+		              1 => SNMP::MibNodeValue.new(:value => 1),
+		              2 => SNMP::MibNodeValue.new(:value => 2)},
+		             @a.get_mib_entry('1.2.3').to_hash)
+		assert_equal(0, @a.get_mib_entry('1.2.3.0').value)
+		assert_equal({0 => SNMP::MibNodeValue.new(:value => 5),
+		              1 => SNMP::MibNodeValue.new(:value => 6),
+		              2 => SNMP::MibNodeValue.new(:value => 7)},
+		             @a.get_mib_entry('4.5.6').to_hash)
+		assert_equal(6, @a.get_mib_entry('4.5.6.1').value)
 	end
 
 	def test_plugins_must_be_leaf_nodes
@@ -87,15 +108,30 @@ class PluginInterfaceTest < Test::Unit::TestCase
 	def test_a_tree_of_data
 		@a.add_plugin('1.2.3') { [[11, 12, 13], [21, 22, 23], [31, 32, 33]] }
 
-		assert_equal({0=>{0=>11, 1=>12, 2=>13}, 1=>{0=>21, 1=>22, 2=>23}, 2=>{0=>31, 1=>32, 2=>33}},
-		             @a.get_mib_entry('1.2.3').to_hash)
+		assert_equal({0 => {
+		                0 => SNMP::MibNodeValue.new(:value => 11),
+		                1 => SNMP::MibNodeValue.new(:value => 12),
+		                2 => SNMP::MibNodeValue.new(:value => 13)},
+		              1 => {
+		                0 => SNMP::MibNodeValue.new(:value => 21),
+		                1 => SNMP::MibNodeValue.new(:value => 22),
+		                2 => SNMP::MibNodeValue.new(:value => 23)},
+						  2 => {
+						    0 => SNMP::MibNodeValue.new(:value => 31),
+						    1 => SNMP::MibNodeValue.new(:value => 32),
+						    2 => SNMP::MibNodeValue.new(:value => 33)}
+						 }, @a.get_mib_entry('1.2.3').to_hash)
 		assert_equal(SNMP::NoSuchObject, @a.get_snmp_value('1.2.3'))
-		assert_equal({0=>11, 1=>12, 2=>13}, @a.get_mib_entry('1.2.3.0').to_hash)
+		assert_equal({0 => SNMP::MibNodeValue.new(:value => 11),
+		              1 => SNMP::MibNodeValue.new(:value => 12),
+		              2 => SNMP::MibNodeValue.new(:value => 13)},
+		             @a.get_mib_entry('1.2.3.0').to_hash)
 		assert_equal(SNMP::NoSuchObject, @a.get_snmp_value('1.2.3.0'))
 		
 		3.times { |i|
 			3.times { |j|
-				assert_equal("#{i+1}#{j+1}".to_i, @a.get_mib_entry("1.2.3.#{i}.#{j}"))
+				assert_equal("#{i+1}#{j+1}".to_i,
+				             @a.get_mib_entry("1.2.3.#{i}.#{j}").value)
 			}
 		}
 	end
@@ -104,11 +140,13 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		@a.add_plugin('1.2.3') { [0, 1, 2] }
 		
 		# Fails because we don't have .1.2.3.4
-		assert_equal(nil, @a.get_mib_entry('1.2.3.4'))
+		assert_equal(SNMP::MibNodeTree, @a.get_mib_entry('1.2.3.4').class)
+		assert @a.get_mib_entry('1.2.3.4').empty?
 		assert_equal(SNMP::NoSuchObject, @a.get_snmp_value('1.2.3.4'))
 		
 		# Fails because we don't have a subtree from .1.2.3.1
-		assert_equal(nil, @a.get_mib_entry('1.2.3.1.0'))
+		assert_equal(SNMP::MibNodeTree, @a.get_mib_entry('1.2.3.1.0').class)
+		assert @a.get_mib_entry('1.2.3.1.0').empty?
 		assert_equal(SNMP::NoSuchObject, @a.get_snmp_value('1.2.3.1.0'))
 	end
 
@@ -160,9 +198,9 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		@a.add_plugin_dir(tmpdir)
 		FileUtils.rm_rf(tmpdir)
 		
-		assert_equal(42, @a.get_mib_entry('3.2.1'))
-		assert_equal(nil, @a.get_mib_entry('3.2.1.0'))
-		assert((Time.now.to_i - @a.get_mib_entry('4.0.0')).abs < 2)
+		assert_equal(42, @a.get_mib_entry('3.2.1').value)
+		assert_equal(nil, @a.get_mib_entry('3.2.1.0').value)
+		assert((Time.now.to_i - @a.get_mib_entry('4.0.0').value).abs < 2)
 	end
 
 	def test_rb_plugin_files
@@ -176,8 +214,8 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		@a.add_plugin_dir(tmpdir)
 		FileUtils.rm_rf(tmpdir)
 		
-		assert_equal(42, @a.get_mib_entry('3.2.1'))
-		assert_equal(nil, @a.get_mib_entry('3.2.1.0'))
+		assert_equal(42, @a.get_mib_entry('3.2.1').value)
+		assert_equal(nil, @a.get_mib_entry('3.2.1.0').value)
 	end
 	
 	def test_empty_plugin_return
