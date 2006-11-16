@@ -183,6 +183,7 @@ class RubySnmpd  # :nodoc:
 
 			trap("SIGINT") { agent.shutdown; File.unlink(@options[:pidfile]) }
 			trap("SIGTERM") { agent.shutdown; File.unlink(@options[:pidfile]) }
+			trap("SIGHUP", "IGNORE")
 		else
 			trap("SIGINT") { agent.shutdown }
 		end
