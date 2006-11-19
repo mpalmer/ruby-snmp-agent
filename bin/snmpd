@@ -209,7 +209,7 @@ class RubySnmpd  # :nodoc:
 			exit 2
 		end
 
-		File.chown(euid, 0, @options[:pidfile])
+		File.chown(euid, 0, @options[:pidfile]) if File.exists?(@options[:pidfile])
 		
 		Process::UID.change_privilege(euid)
 	end
