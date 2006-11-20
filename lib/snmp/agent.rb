@@ -356,12 +356,10 @@ class Agent  # :doc:
 		open_socket if @socket.nil?
 
 		@log.info "SNMP agent running"
-		loop do
+		@socket.listen do |data|
 			begin
-				data, remote_info = @socket.recvfrom(@max_packet)
 				@log.debug "Received #{data.length} bytes"
 				@log.debug data.inspect
-				@log.debug "Responding to #{remote_info[3]}:#{remote_info[1]}"
 				
 				message = Message.decode(data)
 				
@@ -397,8 +395,8 @@ class Agent  # :doc:
 						raise SNMP::UnknownMessageError.new("invalid message #{message.inspect}")
 				end
 				encoded_message = response.encode
-				n=@socket.send(encoded_message, 0, remote_info[3], remote_info[1])
 				@log.debug encoded_message.inspect
+				encoded_message
 			rescue SNMP::UnknownMessageError => e
 				@log.error "Unknown SNMP message: #{e.message}"
 			rescue IOError => e
@@ -427,8 +425,7 @@ class Agent  # :doc:
 	# Open the socket.  Call this early if you want to drop elevated
 	# privileges before starting the agent itself.
 	def open_socket
-		@socket = UDPSocket.open
-		@socket.bind('', @port)
+		@socket = UDPSocketPool.new(@port)
 	end
 
 	private
@@ -845,6 +842,72 @@ end
 class NilClass  # :nodoc:
 	def value
 		nil
+	end
+end
+
+class UDPSocketPool
+	def initialize(port)
+		@socket_list = {}
+		@port = port
+		
+		init_socket_list
+	end
+
+	def self.listen(port, &block)
+		pool = UDPSocketPool.new(port)
+		
+		pool.listen(&block)
+	end
+	
+	def listen
+		raise RuntimeError.new("No block given to UDPSocketPool#listen") unless block_given?
+
+		loop do
+			ready = IO::select(@socket_list.values)[0]
+		
+			ready.each do |s|
+				data, origin = s.recvfrom(65535)
+				if s == @socket_list['0.0.0.0']
+					# We don't explicitly handle data received by the 'any'
+					# socket, we just use it to trigger a rescan
+					init_socket_list
+				else
+					result = yield(data)
+					s.send(result, 0, origin[3], origin[1])
+				end
+			end
+		end
+	end
+	
+	def close
+		@socket_list.values.each {|s| s.close}
+	end
+		
+	private
+	def init_socket_list
+		addrs = address_list
+		
+		addrs.each do |a|
+			next if @socket_list.keys.include? a
+			@socket_list[a] = ::UDPSocket.new
+			@socket_list[a].setsockopt(Socket::SOL_SOCKET,
+			                           Socket::SO_REUSEADDR, 
+			                           1)
+			@socket_list[a].bind(a, @port)
+		end
+	end
+			
+	def address_list
+		list = ['0.0.0.0']
+		
+		# This should be illegal -- mjp
+		`/sbin/ifconfig`.grep(/inet addr/).each do |line|
+			if line =~ /^\s+inet addr:([0-9.]+)\s/
+				list << $1
+			end
+		end
+		
+		list
 	end
 end
 
