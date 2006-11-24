@@ -113,6 +113,11 @@ class RubySnmpd  # :nodoc:
 		if @options[:printhelp] or @options[:printversion]
 			exit 0
 		end
+
+		if File.exists? @options[:pidfile]
+			puts "PID file #{@options[:pidfile]} exists; exiting"
+			exit 1
+		end
 	
 		@log = Logger.new(@options[:logfile])
 		@log.level = @options[:debug] ? Logger::DEBUG : Logger::INFO
