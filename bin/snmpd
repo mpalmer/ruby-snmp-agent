@@ -80,6 +80,7 @@
 #
 
 require 'optparse'
+require 'fileutils'
 
 require 'snmp/agent'
 
@@ -114,8 +115,10 @@ class RubySnmpd  # :nodoc:
 			exit 0
 		end
 
-		if File.exists? @options[:pidfile]
-			puts "PID file #{@options[:pidfile]} exists; exiting"
+		@pidfile = Pidlock.new(@options[:pidfile])
+
+		if @pidfile.locked?
+			puts "Another ruby-snmpd process is running; exiting"
 			exit 1
 		end
 	
@@ -128,11 +131,13 @@ class RubySnmpd  # :nodoc:
 		begin
 			boot(a)
 		rescue SystemExit
-			exit
+			@log.info("Exiting")
 		rescue Exception => e
 			@log.error("Unhandled exception: #{e.class}: #{e.message}")
 			@log.error("Backtrace follows:")
 			e.backtrace.each { |l| @log.error l }
+		ensure
+			@pidfile.unlock
 		end
 	end
 
@@ -182,10 +187,9 @@ class RubySnmpd  # :nodoc:
 	def boot(agent)
 		if @options[:background]
 			background
-			File.open(@options[:pidfile], 'w') {|fd| fd.puts $$}
 
-			trap("SIGINT") { agent.shutdown; File.unlink(@options[:pidfile]) }
-			trap("SIGTERM") { agent.shutdown; File.unlink(@options[:pidfile]) }
+			trap("SIGINT") { agent.shutdown; @pidfile.unlock }
+			trap("SIGTERM") { agent.shutdown; @pidfile.unlock }
 			trap("SIGHUP", "IGNORE")
 		else
 			trap("SIGINT") { agent.shutdown }
@@ -218,12 +222,87 @@ class RubySnmpd  # :nodoc:
 	end
 	
 	def background
-		if fork.nil?
+		pid = fork
+		if pid.nil?
 			$stdout.close
 			$stderr.close
 			$stdin.close
 		else
+			unless @pidfile.lock(:for_pid => pid)
+				kill('QUIT', pid)
+				puts "Another ruby-snmpd process is running; exiting"
+				exit 1
+			end
 			exit 0
+		end
+	end
+end
+
+class Pidlock
+	attr_reader :lockfile
+	
+	def initialize(lockfile)
+		@lockfile = lockfile
+	end
+	
+	def locked?
+		clear_if_stale
+		File.exists? @lockfile
+	end
+	
+	def mine?
+		Process.pid == lock_pid
+	end
+
+	def anonymous?
+		return false unless File.exists?(@lockfile)
+		File.read(@lockfile) == ""
+	end
+	
+	def lock(opts = {})
+		opts = { :anonymous => false,
+		         :for_pid => Process.pid
+		       }.merge(opts)
+
+		if locked?
+			mine?
+		else
+			if opts[:anonymous]
+				FileUtils.touch(@lockfile)
+			else
+				File.open(@lockfile, "w") { |fd| fd.puts(opts[:for_pid]) }
+			end
+			true
+		end
+	end
+	
+	def unlock(opts = {})
+		opts = {:anonymous => false}.merge(opts)
+
+		if mine? or (opts[:anonymous] and anonymous?)
+			File.unlink(@lockfile)
+			true
+		else
+			false
+		end
+	end
+
+	private
+	def lock_pid
+		if File.exists? @lockfile
+			File.read(@lockfile).to_i
+		else
+			nil
+		end
+	end
+
+	def clear_if_stale
+		return if lock_pid.nil?
+		
+		begin
+			Process.kill(0, lock_pid)
+		rescue Errno::ESRCH
+			File.unlink(@lockfile)
 		end
 	end
 end
