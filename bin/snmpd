@@ -91,8 +91,8 @@ class RubySnmpd  # :nodoc:
 		@options = {
 			:printhelp => false,
 			:printversion => false,
-			:logfile => '/var/log/rubysnmpd.log',
-			:pidfile => '/var/run/rubysnmpd.pid',
+			:logfile => '/var/log/ruby-snmpd.log',
+			:pidfile => '/var/run/ruby-snmpd.pid',
 			:background => true,
 			:port => 161,
 			:user => 'rubysnmpd',
