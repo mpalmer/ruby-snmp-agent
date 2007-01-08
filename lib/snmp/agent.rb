@@ -364,7 +364,10 @@ class Agent  # :doc:
 				message = Message.decode(data)
 				
 				# Community access checks
-				unless @community.nil?
+				community_ok = false
+				if @community.nil?
+					community_ok = true
+				else
 					@log.debug "Checking community"
 					community_ok = if @community.class == String
 						@log.debug "Checking if #{message.community} is #{@community}"
@@ -380,32 +383,38 @@ class Agent  # :doc:
 						@log.debug "Community OK"
 					else
 						@log.debug "Community invalid"
-						next
 					end
 				end
 				
-				case message.pdu
-					when GetRequest
-						@log.debug "GetRequest received"
-						response = process_get_request(message)
-					when GetNextRequest
-						@log.debug "GetNextRequest received"
-						response = process_get_next_request(message)
-					else
-						raise SNMP::UnknownMessageError.new("invalid message #{message.inspect}")
+				if community_ok
+					case message.pdu
+						when GetRequest
+							@log.debug "GetRequest received"
+							response = process_get_request(message)
+						when GetNextRequest
+							@log.debug "GetNextRequest received"
+							response = process_get_next_request(message)
+						else
+							raise SNMP::UnknownMessageError.new("invalid message #{message.inspect}")
+					end
+					encoded_message = response.encode
+					@log.debug encoded_message.inspect
+					encoded_message
+				else
+					nil
 				end
-				encoded_message = response.encode
-				@log.debug encoded_message.inspect
-				encoded_message
 			rescue SNMP::UnknownMessageError => e
 				@log.error "Unknown SNMP message: #{e.message}"
+				nil
 			rescue IOError => e
-				break if e.message == 'stream closed' or e.message == 'closed stream'
+				raise if e.message == 'stream closed' or e.message == 'closed stream'
 				@log.warn "IO Error: #{e.message}"
+				nil
 			rescue Errno::EBADF
-				break
+				raise
 			rescue => e
 				@log.error "Error in handling message: #{e.message}: #{e.backtrace.join("\n")}"
+				nil
 			end
 		end
 	end
@@ -873,7 +882,7 @@ class UDPSocketPool
 					init_socket_list
 				else
 					result = yield(data)
-					s.send(result, 0, origin[3], origin[1])
+					s.send(result, 0, origin[3], origin[1]) unless result.nil?
 				end
 			end
 		end
