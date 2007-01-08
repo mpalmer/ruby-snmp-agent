@@ -723,7 +723,7 @@ class MibNodePlugin < MibNode  # :nodoc:
 				plugin_data = @proc.call
 			rescue => e
 				@log.warn("Plugin for OID #{@oid} raised an exception: #{e.message}\n#{e.backtrace.join("\n")}")
-				return nil
+				return MibNodeValue.new(:logger => @log, :value => nil)
 			end
 
 			if plugin_data.is_a? Array
