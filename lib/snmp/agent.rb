@@ -693,6 +693,7 @@ end
 class MibNodePlugin < MibNode  # :nodoc:
 	def initialize(opts = {}, &block)
 		@log = opts[:logger].nil? ? Logger.new('/dev/null') : opts[:logger]
+		@plugin_timeout = opts[:plugin_timeout] ? 2 : opts[:plugin_timeout]
 		@proc = block
 		@oid = opts[:oid]
 		@cached_value = nil
@@ -729,7 +730,13 @@ class MibNodePlugin < MibNode  # :nodoc:
 		@log.debug("Getting plugin value")
 		if Time.now.to_i > @cache_until
 			begin
-				plugin_data = @proc.call
+				plugin_data = nil
+				Timeout::timeout(@plugin_timeout) do
+					plugin_data = @proc.call
+				end
+			rescue Timeout::Error
+				@log.warn("Plugin for OID #{@oid} exceeded the timeout")
+				return MibNodeValue.new(:logger => @log, :value => nil)
 			rescue => e
 				@log.warn("Plugin for OID #{@oid} raised an exception: #{e.message}\n#{e.backtrace.join("\n")}")
 				return MibNodeValue.new(:logger => @log, :value => nil)
