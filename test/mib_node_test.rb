@@ -111,7 +111,9 @@ class MibNodeTest < Test::Unit::TestCase
 	def test_get_exception_raising_node
 		n = SNMP::MibNodeTree.new(1 => {2 => {3 => SNMP::MibNodePlugin.new { raise "Broooooken!" }}})
 
-		assert_equal(nil, n.get_node(SNMP::ObjectId.new('1.2.3.1')))
+		n_ = n.get_node(SNMP::ObjectId.new('1.2.3.1'))
+		assert_equal(SNMP::MibNodeTree, n_.class)
+		assert_equal(0, n_.instance_eval("@subnodes.length"))
 	end
 
 	def test_left_path

@@ -233,7 +233,8 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		@a.add_plugin('1.2.3') { raise "Broooooken!" }
 		@a.add_plugin('3.2.1') { raise "Still broooooken!" }
 		
-		assert_equal(nil, @a.get_mib_entry('1.2.3.4'))
+		assert_equal(SNMP::MibNodeTree, @a.get_mib_entry('1.2.3.4').class)
+		assert_equal(0, @a.get_mib_entry('1.2.3.4').instance_eval("@subnodes.length"))
 		assert_equal(SNMP::NoSuchObject, @a.get_snmp_value('1.2.3.4'))
 		assert_equal(SNMP::EndOfMibView, @a.next_oid_in_tree('3.2.1.0'))
 	end
