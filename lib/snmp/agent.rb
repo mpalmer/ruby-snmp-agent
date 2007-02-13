@@ -647,14 +647,21 @@ class MibNodeTree < MibNode  # :nodoc:
 		@log.debug("Got #{next_oid.inspect} from call to subnodes[#{sub}].next_oid_in_tree(#{oid.to_s})")
 		
 		if next_oid.nil?
-			@log.debug("No luck asking subtree #{sub}; how about the next subtree?")
-			sub = @subnodes.keys.sort.find { |k| k > sub }
+			@log.debug("No luck asking subtree #{sub}; how about the next subtree(s)?")
+			sub = @subnodes.keys.sort.find { |k|
+				if k > sub
+					@log.debug("Examining subtree #{k}")
+					!sub_node(k).left_path.nil?
+				else
+					false
+				end
+			}
+			
 			if sub.nil?
 				@log.debug("This node has no valid next nodes")
 				return nil
 			end
-			@log.debug("Next subtree is #{sub}")
-				
+			
 			next_oid = sub_node(sub).left_path
 		end
 		
@@ -667,7 +674,6 @@ class MibNodeTree < MibNode  # :nodoc:
 			next_oid.unshift(sub)
 			@log.debug("The next OID for #{oid.inspect} is #{next_oid.inspect}")
 			return ObjectId.new(next_oid)
-			return nil
 		end
 	end
 

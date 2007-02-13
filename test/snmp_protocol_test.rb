@@ -149,4 +149,48 @@ class SnmpProtocolTest < Test::Unit::TestCase
 		assert_equal('3.2.1', resp.pdu.varbind_list[0].name.to_s)
 		assert_equal(42, resp.pdu.varbind_list[0].value.to_i)
 	end
+
+	def test_get_next_request_with_crazy_data_structure
+		@a.add_plugin('27068.2.2.7') do
+			{1 => [0, 1, 2],
+			 2 => ['fairfax/YSM_US', 'fengmingxuan/netease', '58.com/baidu'],
+			 3 => [437, 752, 0],
+			 4 => [437, 752, 0],
+			 5 => [437, 752, 0],
+			 6 => [1, 1, 0],
+			 7 => [1171334642, 1171334641, 1171334640],
+			 8 => [],
+			 9 => [],
+			 10 => [],
+			 11 => [1, 1, 1],
+			 12 => [0, 0, 1],
+			 13 => ['fairfax', 'fengmingxuan', '58.com'],
+			 14 => ['YSM_US', 'netease', 'baidu']
+			}
+		end
+		
+		# First up, one we think is a no-brainer to work
+		pdu = SNMP::GetNextRequest.new(1, SNMP::VarBindList.new(['27068.2.2.7.6.2']))
+		msg = SNMP::Message.new(1, 'public', pdu)
+		
+		resp = @a.process_get_next_request(msg)
+		
+		assert_equal(SNMP::Message, resp.class)
+		assert_equal(1, resp.pdu.varbind_list.length)
+		assert_equal('27068.2.2.7.7.0', resp.pdu.varbind_list[0].name.to_s)
+		assert_equal(1171334642, resp.pdu.varbind_list[0].value.to_i)
+
+		# Now one that's a bit trickier.  The bug that we've seen is that the
+		# system appears to not walk over empty arrays properly when performing
+		# the GetNext operation.
+		pdu = SNMP::GetNextRequest.new(1, SNMP::VarBindList.new(['27068.2.2.7.7.2']))
+		msg = SNMP::Message.new(1, 'public', pdu)
+		
+		resp = @a.process_get_next_request(msg)
+		
+		assert_equal(SNMP::Message, resp.class)
+		assert_equal(1, resp.pdu.varbind_list.length)
+		assert_equal('27068.2.2.7.11.0', resp.pdu.varbind_list[0].name.to_s)
+		assert_equal(1, resp.pdu.varbind_list[0].value.to_i)
+	end
 end
