@@ -3,7 +3,7 @@ require "rake/clean"
 require "rake/rdoctask"
 require "rake/gempackagetask"
 
-PROJECT_VERSION = '0.1'
+PROJECT_VERSION = '0.0.6'
 
 # Ruby library code.
 LIB_FILES = FileList["lib/**/*.rb"]
@@ -39,11 +39,10 @@ Rake::TestTask.new do |t|
 end
 
 GEM_SPEC = Gem::Specification.new do |s|
-  s.name = 'snmp-agent'
+  s.name = 'ruby-snmpd'
   s.version = PROJECT_VERSION
   s.summary = 'A Ruby implementation of an SNMP agent'
-  s.rubyforge_project = 'snmplib'
-  s.homepage = "http://snmplib.rubyforge.org/"
+  s.homepage = "http://theshed.hezmatt.org/rubysnmpd"
   s.author = 'Matthew Palmer'
   s.email = 'mpalmer@hezmatt.org'
   s.files = DIST_FILES
@@ -54,8 +53,8 @@ GEM_SPEC = Gem::Specification.new do |s|
 end
 
 Rake::GemPackageTask.new(GEM_SPEC) do |pkg|
-  pkg.need_zip = true
-  pkg.need_tar = true
+  pkg.need_tar_gz = true
+  pkg.package_dir = File.dirname(File.dirname(File.expand_path(__FILE__))) + '/builds'
 end
 
 Rake::RDocTask.new("rdoc") do |t|
