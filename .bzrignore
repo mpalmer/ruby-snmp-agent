@@ -1,2 +1,3 @@
 doc/*
 debian
+test/coverage

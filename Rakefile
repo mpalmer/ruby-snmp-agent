@@ -3,6 +3,13 @@ require "rake/clean"
 require "rake/rdoctask"
 require "rake/gempackagetask"
 
+begin
+	require 'rcov/rcovtask'
+rescue LoadError
+	puts "You do not have rcov installed."
+	puts "Coverage tasks won't work for you."
+end
+
 PROJECT_VERSION = '0.0.6'
 
 # Ruby library code.
@@ -36,6 +43,13 @@ task "default" => ["test"]
 Rake::TestTask.new do |t|
   t.test_files = TEST_FILES
   t.libs = ["lib"]
+end
+
+Rcov::RcovTask.new('rcov') do |t|
+	t.libs << "test"
+	t.test_files = FileList["test/*_test.rb"]
+	t.output_dir = "test/coverage"
+	t.verbose = true
 end
 
 GEM_SPEC = Gem::Specification.new do |s|
