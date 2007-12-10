@@ -728,7 +728,8 @@ class MibNodePlugin < MibNode  # :nodoc:
 	end
 
 	def next_oid_in_tree(oid)
-		plugin_value.next_oid_in_tree(oid) if plugin_value.respond_to? :next_oid_in_tree
+		val = plugin_value
+		val.next_oid_in_tree(oid) if val.respond_to? :next_oid_in_tree
 	end
 	
 	private
