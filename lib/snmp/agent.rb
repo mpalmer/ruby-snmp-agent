@@ -285,9 +285,9 @@ class Agent  # :doc:
 		agent_start_time = Time.now
 		self.add_plugin('1.3.6.1.2.1.1') { {1 => [`uname -a`],
 		                                    3 => [SNMP::TimeTicks.new(((Time.now - agent_start_time) * 100).to_i)],
-		                                    4 => ["Someone"],
-		                                    5 => ["RubySNMP Agent"],
-		                                    6 => ["Unknown"]
+		                                    4 => [settings[:sysContact]],
+		                                    5 => [settings[:sysName]],
+		                                    6 => [settings[:sysLocation]]
 		                                   }
 		                                 }
 	end
