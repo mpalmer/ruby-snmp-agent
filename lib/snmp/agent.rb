@@ -525,7 +525,7 @@ class MibNode  # :nodoc:
 			return initial_data
 		end
 
-		if initial_data.is_a? Array
+		if initial_data.instance_of? Array
 			initial_data = initial_data.to_hash
 		end
 
@@ -748,7 +748,7 @@ class MibNodePlugin < MibNode  # :nodoc:
 				return MibNodeValue.new(:logger => @log, :value => nil)
 			end
 
-			if plugin_data.is_a? Array
+			if plugin_data.instance_of? Array
 				plugin_data = plugin_data.to_hash
 			end
 
