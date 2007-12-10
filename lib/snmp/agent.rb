@@ -441,8 +441,8 @@ class Agent  # :doc:
 	def process_get_request(message)
 		response = message.response
 		response.pdu.varbind_list.each do |v|
-			@log.debug "GetRequest OID: #{v.name}"
-			v.value = get_snmp_value(v.name)
+			@log.debug "GetRequest OID: #{v.name}, #{message.community}"
+			v.value = get_snmp_value(v.name, message.community)
 		end
 
 		response
@@ -469,9 +469,9 @@ class Agent  # :doc:
 		response
 	end
 	
-	def get_snmp_value(oid)
+	def get_snmp_value(oid, community = nil)
 		@log.debug("get_snmp_value(#{oid.to_s})")
-		data_value = get_mib_entry(oid).value
+		data_value = get_mib_entry(oid, community).value
 		
 		if data_value.is_a? ::Integer
 			SNMP::Integer.new(data_value)
@@ -487,10 +487,10 @@ class Agent  # :doc:
 		end
 	end
 	
-	def get_mib_entry(oid)
+	def get_mib_entry(oid, community = nil)
 		@log.debug "Looking for MIB entry #{oid.to_s}"
 		oid = ObjectId.new(oid) unless oid.is_a? ObjectId
-		@mib_tree.get_node(oid)
+		@mib_tree.get_node(oid, community)
 	end
 
 	def next_oid_in_tree(oid)
@@ -572,7 +572,7 @@ class MibNodeTree < MibNode  # :nodoc:
 		nil
 	end
 	
-	def get_node(oid)
+	def get_node(oid, community = nil)
 		oid = ObjectId.new(oid)
 		@log.debug("get_node(#{oid.to_s})")
 
@@ -581,7 +581,7 @@ class MibNodeTree < MibNode  # :nodoc:
 			# End of the road, bud
 			return self
 		else
-			return sub_node(next_idx).get_node(oid)
+			return sub_node(next_idx).get_node(oid, community)
 		end
 	end
 	
@@ -714,9 +714,10 @@ class MibNodePlugin < MibNode  # :nodoc:
 		plugin_value.to_hash
 	end
 	
-	def get_node(oid)
-		@log.debug("get_node(#{oid.to_s})")
-		plugin_value.get_node(oid) if plugin_value.respond_to? :get_node
+	def get_node(oid, community = nil)
+		@log.debug("plugin get_node(#{oid.to_s}, #{community.to_s})")
+		val = plugin_value(community)
+		val.get_node(oid, community) if val.respond_to? :get_node
 	end
 
 	def add_node(oid, node)
@@ -733,13 +734,13 @@ class MibNodePlugin < MibNode  # :nodoc:
 	end
 	
 	private
-	def plugin_value
+	def plugin_value community = nil
 		@log.debug("Getting plugin value")
 		if Time.now.to_i > @cache_until
 			begin
 				plugin_data = nil
 				Timeout::timeout(@plugin_timeout) do
-					plugin_data = @proc.call
+					plugin_data = @proc.call community
 				end
 			rescue Timeout::Error
 				@log.warn("Plugin for OID #{@oid} exceeded the timeout")
@@ -774,7 +775,7 @@ class MibNodeProxy < MibNode  # :nodoc:
 		@log = opts[:logger] ? opts[:logger] : Logger.new('/dev/null')
 	end
 	
-	def get_node(oid)
+	def get_node(oid, community = nil)
 		oid = SNMP::ObjectId.new(oid) unless oid.is_a? SNMP::ObjectId
 		
 		complete_oid = ObjectId.new(@base_oid + oid)
@@ -824,7 +825,7 @@ class MibNodeValue < MibNode  # :nodoc:
 		@value.nil? or other.nil? ? 0 : @value <=> other.value
 	end
 
-	def get_node(oid)
+	def get_node(oid, community = nil)
 		oid.length == 0 ? self : MibNodeTree.new
 	end
 	

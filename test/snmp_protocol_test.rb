@@ -193,4 +193,18 @@ class SnmpProtocolTest < Test::Unit::TestCase
 		assert_equal('27068.2.2.7.11.0', resp.pdu.varbind_list[0].name.to_s)
 		assert_equal(1, resp.pdu.varbind_list[0].value.to_i)
 	end
+
+	def test_passing_the_community_into_the_plugin
+		@a.add_plugin('1.2.3') { |community| community }
+		
+		pdu = SNMP::GetRequest.new(1, SNMP::VarBindList.new('1.2.3'))
+		msg = SNMP::Message.new(1, 'public', pdu)
+		
+		resp = @a.process_get_request(msg)
+		
+		assert_equal(SNMP::Message, resp.class)
+		assert_equal(1, resp.pdu.varbind_list.length)
+		assert_equal("OCTET STRING", resp.pdu.varbind_list[0].value.asn1_type)
+		assert_equal('public', resp.pdu.varbind_list[0].value.to_s)
+	end
 end
