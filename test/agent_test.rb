@@ -25,4 +25,19 @@ class SnmpAgentTest < Test::Unit::TestCase
 		
 		@a.shutdown
 	end
+
+	def test_dont_reply_exception
+		port = 50000 + rand(10000)
+		@a = SNMP::Agent.new(:port => port)
+		@a.add_plugin('1.2.3') { raise DontReplyException }
+		
+		runner = Thread.new { @a.start }
+		
+		m = SNMP::Manager.new(:Host => 'localhost',
+		                      :Port => port,
+		                      :Retries => 1)
+		assert_raise(SNMP::RequestTimeout) { m.get(['1.2.3.1']) }
+		
+		@a.shutdown
+	end
 end

@@ -410,6 +410,8 @@ class Agent  # :doc:
 				raise if e.message == 'stream closed' or e.message == 'closed stream'
 				@log.warn "IO Error: #{e.message}"
 				nil
+			rescue DontReplyException => e
+				nil
 			rescue Errno::EBADF
 				raise
 			rescue => e
@@ -745,6 +747,9 @@ class MibNodePlugin < MibNode  # :nodoc:
 			rescue Timeout::Error
 				@log.warn("Plugin for OID #{@oid} exceeded the timeout")
 				return MibNodeValue.new(:logger => @log, :value => nil)
+			rescue DontReplyException => e
+				# Just pass it on up the chain
+				raise e
 			rescue => e
 				@log.warn("Plugin for OID #{@oid} raised an exception: #{e.message}\n#{e.backtrace.join("\n")}")
 				return MibNodeValue.new(:logger => @log, :value => nil)
@@ -933,6 +938,11 @@ class UDPSocketPool
 		
 		list
 	end
+end
+
+# Exception to be raised by a plugin if it really, really, really doesn't
+# want to have anything at all to do with this request.
+class DontReplyException < Exception
 end
 
 if $0 == __FILE__
