@@ -71,14 +71,15 @@ module SNMP  # :nodoc:
 # will help immensely.
 #
 # The basic layout of all plugins is the same -- you map a base OID to a
-# chunk of code, and then any requests for that subtree cause the code to be
-# executed.  You use SNMP::Agent#add_plugin to add a new plugin. This method
-# takes a base OID (as a string or an array of integers) and a block of code
-# to be run when the requested OID matches the given base OID.
+# chunk of code, and then any requests for OIDs in that subtree cause the
+# code to be executed to determine the value (or lack thereof).  You use
+# SNMP::Agent#add_plugin to add a new plugin. This method takes a base OID
+# (as a string or an array of integers) and a block of code to be run when
+# the requested OID matches the given base OID.
 #
 # The result from the block of code should either be a single value (if you
 # want the base OID to return a value itself), a simple array or hash (if
-# the base OID maps to a list of entries), or a tree of arrays and hashes
+# the base OID maps to a list of entries), or a tree of arrays and/or hashes
 # that describes the data underneath the base OID.
 #
 # For example, if you want OID .1.2.3 to return the single value 42, you
@@ -95,7 +96,7 @@ module SNMP  # :nodoc:
 #
 #    agent.add_plugin('1.2.4') { %w{sleepy grumpy doc crazy hungry} }
 #
-# In this case, requesting the OID '1.2.4' won't get you anything, but
+# In this case, requesting the OID '1.2.4' will get you NoSuchObject, but
 # requesting '1.2.4.0' will get you the OCTET STRING 'sleepy', and
 # requesting '1.2.4.3' will return 'crazy'.  You could also walk the whole
 # of the '1.2.4' subtree and you'll get each of the dwarves in turn.
@@ -123,19 +124,27 @@ module SNMP  # :nodoc:
 #
 # Now you can get the product of any two numbers between 0 and 5 by simply
 # doing a get on your agent for '1.2.6.n.m' -- or you could use a
-# calculator. The real value of plugins isn't static data like this, it's
+# calculator.
+#
+# The real value of plugins isn't static data like the above examples, it's
 # dynamic creation of data -- reading things from files, parsing kernel
-# data, that sort of thing.  Doing that is left as an exercise for the
-# reader...
+# data, that sort of thing.  The only limitation is that it has to fit into
+# the SNMP way of doing things (tables and lists and values, oh my!) and you
+# need to be able to write the code for it.
 #
 # === Restrictions for plugin OIDs
 #
-# On the topic of plugins and subtrees: you cannot have a plugin respond
-# to a subtree of another plugin.  That is, if you have one plugin which
-# has registered itself as handling '1.2.3', you cannot have another plugin
-# that says it handles '1.2' or '1.2.3.4' -- in either case, the two plugins
-# will conflict.  Whether this behaviour is fixed in the future depends on
-# whether it turns out to be a limitation that causes major hassle.
+# You cannot have a plugin respond to a subtree of another plugin.  That is,
+# if you have one plugin which has registered itself as handling '1.2.3',
+# you cannot have another plugin that says it handles '1.2' or '1.2.3.4' --
+# in either case, the two plugins will conflict.
+#
+# This restriction isn't really an SNMP one, it's more of a sanity-saving
+# measure.  Imagine the confusion from having to troubleshoot wrong values
+# in a heavily nested plugin tree...
+#
+# If you have a deep and abiding need to nest plugins, however, get in
+# contact and we'll see about removing the limitation.
 #
 # === Plugins and data types
 #
@@ -186,13 +195,49 @@ module SNMP  # :nodoc:
 # smaller trees will take less time to walk, and hopefully you won't need to
 # do the full set of processing to obtain the subset of values, so it'll be
 # quicker to process.
+#
+# The one limitation on caching is that you can't cache a single value,
+# because you need to return a hash to provide the :cache key.  This is yet
+# to cause anyone any problems, however I am aware of the potential problem,
+# and if it causes anyone major grief, please get in touch and we'll work out
+# an alternate solution.
 # 
+# === Communities in Plugins
+#
+# If you have a need to examine the community that was passed to the SNMP
+# request that caused your plugin to be run, you can provide an argument to
+# your block and have the community put in there.  For instance:
+#
+#   agent.add_plugin('1.2.3.4') { |c| c }
+#
+# Will return the community name passed to any request for the OID .1.2.3.4.
+#
+# Note that plugin value caching and community inspection do not play well
+# together at present -- if you return a value and ask for it to be cached,
+# it will be cached regardless of the community that is used in subsequent
+# requests.  Thus, if you have a need to examine the community in your plugin,
+# don't ask the agent to cache the response.
+# 
+# === "Declining" a request
+#
+# If you're writing a plugin that, in some instances, should completely fail
+# to respond, you can raise a DontReplyException.  This will cause the agent
+# to not send a response PDU.  Note the difference between raising
+# DontReplyException and returning nil -- the latter will cause a
+# NoSuchObject response, while the former will make the server look like a
+# black hole.
+#
+# There is a potential issue with raising DontReplyException if there are
+# multiple OIDs in the request PDU, in that no response will be sent if
+# *any* of the OIDs return a DontReplyException.  Hence they should be used
+# with caution.
+#
 # === Bulk plugin loading
 #
 # If you've got a large collection of plugins that you want to include in
 # your system, you don't have to define them all by hand within your code --
-# you can use the <tt>add_plugin_dir</tt> method to load all of the plugins present
-# in a directory.
+# you can use the <tt>add_plugin_dir</tt> method to load all of the plugins
+# present in a directory.
 #
 # There are two sorts of plugin files recognised by the loader:
 #
@@ -237,6 +282,10 @@ module SNMP  # :nodoc:
 # agent.  I don't consider this to be a major limitation, as -- due to the
 # globally-unique and globally-meaningful semantics of the MIB -- you
 # shouldn't have too much call for changing OIDs in proxies.
+#
+# There are some oddities in the proxy in the area of communities, and as far
+# as I am aware nobody is doing anything particularly taxing with the proxy,
+# so it may harbour unpleasant corner cases.  Sorry about that.
 #
 
 class Agent  # :doc:
