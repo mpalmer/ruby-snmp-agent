@@ -994,8 +994,8 @@ end
 class DontReplyException < Exception
 end
 
-if $0 == __FILE__
-agent = SNMP::Agent.new(:port => 1061, :logger => Logger.new(STDOUT))
-trap("INT") { agent.shutdown }
-agent.start
+if __FILE__ == $0
+	agent = SNMP::Agent.new(:port => 1061, :logger => Logger.new(STDOUT))
+	trap("INT") { agent.shutdown }
+	agent.start
 end

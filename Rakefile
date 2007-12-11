@@ -50,6 +50,7 @@ Rcov::RcovTask.new('rcov') do |t|
 	t.test_files = FileList["test/*_test.rb"]
 	t.output_dir = "test/coverage"
 	t.verbose = true
+	t.rcov_opts << "--exclude '\\A/usr/local/lib'"
 end
 
 GEM_SPEC = Gem::Specification.new do |s|

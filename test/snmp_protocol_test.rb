@@ -98,7 +98,8 @@ class SnmpProtocolTest < Test::Unit::TestCase
 		m = SNMP::Manager.new(:Host => 'localhost',
 		                      :Port => port,
 		                      :Community => 'privateparts',
-		                      :Retries => 1)
+		                      :Retries => 1,
+		                      :Timeout => 0.1)
 		assert_nothing_raised { m.get(['1.2.3.1']) }
 
 		m = SNMP::Manager.new(:Host => 'localhost',
@@ -122,7 +123,8 @@ class SnmpProtocolTest < Test::Unit::TestCase
 		m = SNMP::Manager.new(:Host => 'localhost',
 		                      :Port => port,
 		                      :Community => 'private',
-		                      :Retries => 1)
+		                      :Retries => 1,
+		                      :Timeout => 0.1)
 		assert_nothing_raised { m.get(['1.2.3.1']) }
 
 		m = SNMP::Manager.new(:Host => 'localhost',
@@ -133,6 +135,26 @@ class SnmpProtocolTest < Test::Unit::TestCase
 
 		assert_raise(SNMP::RequestTimeout) { m.get(['1.2.3.1']) }
 		
+		@a.shutdown
+	end
+
+	def test_invalid_community_setting
+		port = 50000 + rand(10000)
+		log = mock
+		log.expects(:debug).at_least_once
+		log.expects(:info).at_least_once
+		log.expects(:error).with("Invalid setting for :community").at_least_once
+		@a = SNMP::Agent.new(:port => port, :community => {'a' => 'b'}, :logger => log)
+
+		runner = Thread.new { @a.start }
+		
+		m = SNMP::Manager.new(:Host => 'localhost',
+		                      :Port => port,
+		                      :Community => 'private',
+		                      :Retries => 1,
+		                      :Timeout => 0.1)
+		assert_raise(SNMP::RequestTimeout) { m.get(['1.3.6.1.2.1.1.4.0']) }
+
 		@a.shutdown
 	end
 
@@ -192,6 +214,22 @@ class SnmpProtocolTest < Test::Unit::TestCase
 		assert_equal(1, resp.pdu.varbind_list.length)
 		assert_equal('27068.2.2.7.11.0', resp.pdu.varbind_list[0].name.to_s)
 		assert_equal(1, resp.pdu.varbind_list[0].value.to_i)
+	end
+
+	def test_get_next_full_code_path
+		port = 50000 + rand(10000)
+		@a = SNMP::Agent.new(:port => port)
+		@a.add_plugin('1.2.3') { [1, 2, 3] }
+		
+		runner = Thread.new { @a.start }
+		
+		m = SNMP::Manager.new(:Host => 'localhost',
+		                      :Port => port,
+		                      :Retries => 1,
+		                      :Timeout => 0.1)
+		assert_nothing_raised { m.get_next(['1.2.3.1']) }
+
+		@a.shutdown
 	end
 
 	def test_passing_the_community_into_the_plugin

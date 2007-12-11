@@ -4,6 +4,9 @@ require 'tmpdir'
 require 'fileutils'
 require 'snmp/agent'
 
+require 'rubygems'
+require 'mocha'
+
 class PluginInterfaceTest < Test::Unit::TestCase
 	def setup
 		@a = SNMP::Agent.new
@@ -216,6 +219,38 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		
 		assert_equal(42, @a.get_mib_entry('3.2.1').value)
 		assert_equal(nil, @a.get_mib_entry('3.2.1.0').value)
+	end
+	
+	def test_rb_plugin_file_with_syntax_error
+		tmpdir = File.join(Dir::tmpdir, "rubysnmp.#{$$}.#{rand}")
+		Dir.mkdir(tmpdir)
+		
+		File.open(tmpdir + '/foo.rb', 'w') {|fd|
+			fd.puts "agent.add_plugin("
+		}
+
+		@a.instance_variable_set(:@log, log = mock)
+		log.expects(:info).at_least_once
+		log.expects(:warn).with("Syntax error in #{File.join(tmpdir, 'foo.rb')}: (eval):1:in `add_plugin_dir': compile error\n(eval):1: parse error, unexpected $, expecting ')'")
+		
+		@a.add_plugin_dir(tmpdir)
+		FileUtils.rm_rf(tmpdir)
+	end
+	
+	def test_rb_plugin_file_with_some_error
+		tmpdir = File.join(Dir::tmpdir, "rubysnmp.#{$$}.#{rand}")
+		Dir.mkdir(tmpdir)
+		
+		File.open(tmpdir + '/foo.rb', 'w') {|fd|
+			fd.puts "Invalid Content"
+		}
+
+		@a.instance_variable_set(:@log, log = mock)
+		log.expects(:info).at_least_once
+		log.expects(:warn).with("Some error occured while loading #{File.join(tmpdir, 'foo.rb')}: (eval):1:in `add_plugin_dir': uninitialized constant SNMP::Agent::Content")
+		
+		@a.add_plugin_dir(tmpdir)
+		FileUtils.rm_rf(tmpdir)
 	end
 	
 	def test_empty_plugin_return
