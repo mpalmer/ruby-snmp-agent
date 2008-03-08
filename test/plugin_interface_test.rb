@@ -4,8 +4,12 @@ require 'tmpdir'
 require 'fileutils'
 require 'snmp/agent'
 
-require 'rubygems'
-require 'mocha'
+begin
+	require 'rubygems'
+	require 'mocha'
+rescue LoadError
+	$stderr.puts "You do not have mocha available; some tests will not run"
+end
 
 class PluginInterfaceTest < Test::Unit::TestCase
 	def setup
@@ -221,38 +225,42 @@ class PluginInterfaceTest < Test::Unit::TestCase
 		assert_equal(nil, @a.get_mib_entry('3.2.1.0').value)
 	end
 	
-	def test_rb_plugin_file_with_syntax_error
-		tmpdir = File.join(Dir::tmpdir, "rubysnmp.#{$$}.#{rand}")
-		Dir.mkdir(tmpdir)
-		
-		File.open(tmpdir + '/foo.rb', 'w') {|fd|
-			fd.puts "agent.add_plugin("
-		}
+	if defined?(Mocha)
+		def test_rb_plugin_file_with_syntax_error
+			tmpdir = File.join(Dir::tmpdir, "rubysnmp.#{$$}.#{rand}")
+			Dir.mkdir(tmpdir)
+			
+			File.open(tmpdir + '/foo.rb', 'w') {|fd|
+				fd.puts "agent.add_plugin("
+			}
 
-		@a.instance_variable_set(:@log, log = mock)
-		log.expects(:info).at_least_once
-		log.expects(:warn).with("Syntax error in #{File.join(tmpdir, 'foo.rb')}: (eval):1:in `add_plugin_dir': compile error\n(eval):1: parse error, unexpected $, expecting ')'")
-		
-		@a.add_plugin_dir(tmpdir)
-		FileUtils.rm_rf(tmpdir)
+			@a.instance_variable_set(:@log, log = mock)
+			log.expects(:info).at_least_once
+			log.expects(:warn).with {|msg| msg =~ /^Syntax error in #{File.join(tmpdir, 'foo.rb')}/ }
+			
+			@a.add_plugin_dir(tmpdir)
+			FileUtils.rm_rf(tmpdir)
+		end
 	end
 	
-	def test_rb_plugin_file_with_some_error
-		tmpdir = File.join(Dir::tmpdir, "rubysnmp.#{$$}.#{rand}")
-		Dir.mkdir(tmpdir)
-		
-		File.open(tmpdir + '/foo.rb', 'w') {|fd|
-			fd.puts "Invalid Content"
-		}
+	if defined?(Mocha)
+		def test_rb_plugin_file_with_some_error
+			tmpdir = File.join(Dir::tmpdir, "rubysnmp.#{$$}.#{rand}")
+			Dir.mkdir(tmpdir)
+			
+			File.open(tmpdir + '/foo.rb', 'w') {|fd|
+				fd.puts "Invalid Content"
+			}
 
-		@a.instance_variable_set(:@log, log = mock)
-		log.expects(:info).at_least_once
-		log.expects(:warn).with("Some error occured while loading #{File.join(tmpdir, 'foo.rb')}: (eval):1:in `add_plugin_dir': uninitialized constant SNMP::Agent::Content")
-		
-		@a.add_plugin_dir(tmpdir)
-		FileUtils.rm_rf(tmpdir)
+			@a.instance_variable_set(:@log, log = mock)
+			log.expects(:info).at_least_once
+			log.expects(:warn).with("Some error occured while loading #{File.join(tmpdir, 'foo.rb')}: (eval):1:in `add_plugin_dir': uninitialized constant SNMP::Agent::Content")
+			
+			@a.add_plugin_dir(tmpdir)
+			FileUtils.rm_rf(tmpdir)
+		end
 	end
-	
+		
 	def test_empty_plugin_return
 		@a.add_plugin('1.2.3.4') { {} }
 		@a.add_plugin('4.3.2.1') { [] }
